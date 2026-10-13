@@ -27,6 +27,7 @@ export const job: Job = {
     'We are hiring a Backend Engineer to build payment APIs. Requirements: Node.js, TypeScript, MongoDB, Kubernetes, Kafka and strong communication skills. Experience with REST and Jest is a plus.',
   url: '',
   emphasis: 'Fintech',
+  instructions: '',
 };
 
 export function sampleContent(): CvContent {

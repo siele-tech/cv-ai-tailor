@@ -20,7 +20,14 @@ const bullets = (items: string[]) =>
     </ul>
   ) : null;
 
-export function AnalysisPanel({ analysis, generatedBy }: { analysis: Analysis; generatedBy: Generator }) {
+interface Props {
+  analysis: Analysis;
+  generatedBy: Generator;
+  /** When given, each missing skill becomes a button for telling the AI about real experience with it. */
+  onAddressGap?(skill: string): void;
+}
+
+export function AnalysisPanel({ analysis, generatedBy, onAddressGap }: Props) {
   const score = Math.max(0, Math.min(100, Math.round(analysis.score)));
   const tone = score >= 70 ? 'text-emerald-700' : score >= 45 ? 'text-amber-700' : 'text-red-700';
   const bar = score >= 70 ? 'bg-emerald-600' : score >= 45 ? 'bg-amber-500' : 'bg-red-500';
@@ -63,9 +70,22 @@ export function AnalysisPanel({ analysis, generatedBy }: { analysis: Analysis; g
       <Block title="Required skills not shown in your master CV" empty="Nothing missing was identified.">
         {analysis.missingSkills.length ? (
           <>
-            <Chips items={analysis.missingSkills} tone="bad" />
+            {onAddressGap ? (
+              <ul className="flex flex-wrap gap-1.5">
+                {analysis.missingSkills.map((skill, i) => (
+                  <li key={`${skill}-${i}`}>
+                    <button type="button" onClick={() => onAddressGap(skill)} className="min-h-9 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-200 ring-inset hover:bg-amber-100">
+                      {skill} <span className="font-semibold text-brand-700">+ I have this</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Chips items={analysis.missingSkills} tone="bad" />
+            )}
             <p className="mt-3 text-xs leading-relaxed text-slate-600">
-              These were deliberately left out of your CV. If you genuinely have one of them, add it to your master CV and tailor again.
+              These were deliberately left out, because your master CV does not show them. This is what keeps the score below 100.{' '}
+              {onAddressGap ? 'If you genuinely have one, tap it and tell the AI where you used it: it is added to this CV and the score is re-estimated.' : 'If you genuinely have one of them, add it to your master CV and tailor again.'}
             </p>
           </>
         ) : null}

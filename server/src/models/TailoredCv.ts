@@ -28,6 +28,7 @@ const jobSchema = new Schema<Job>(
     description: { type: String, required: true, maxlength: 20_000 },
     url: { type: String, default: '', trim: true, maxlength: 600 },
     emphasis: { type: String, enum: EMPHASES, default: 'General IT' },
+    instructions: { type: String, default: '', maxlength: 2000 },
   },
   { _id: false },
 );

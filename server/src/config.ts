@@ -34,9 +34,13 @@ export interface Config {
     apiKey: string;
     baseUrl: string;
     model: string;
+    /** Tried in order when the main model is overloaded, rate-limited or too slow. */
+    fallbackModels: string[];
     jsonMode: boolean;
     temperature: number | undefined;
     timeoutMs: number;
+    /** Pause before retrying a model that reported it is overloaded. */
+    retryDelayMs: number;
   };
 }
 
@@ -94,9 +98,14 @@ export function loadConfig(rawSource: NodeJS.ProcessEnv = process.env): Config {
       apiKey: source.AI_API_KEY?.trim() ?? '',
       baseUrl: (source.AI_BASE_URL?.trim() || 'https://api.openai.com/v1').replace(/\/$/, ''),
       model: source.AI_MODEL?.trim() || 'gpt-4o-mini',
+      fallbackModels: (source.AI_FALLBACK_MODELS ?? '')
+        .split(',')
+        .map((m) => m.trim())
+        .filter(Boolean),
       jsonMode: source.AI_JSON_MODE !== 'false',
       temperature: Number.isFinite(temperature) ? temperature : undefined,
-      timeoutMs: num(source.AI_TIMEOUT_MS, 120_000),
+      timeoutMs: num(source.AI_TIMEOUT_MS, 75_000),
+      retryDelayMs: env === 'test' ? 1 : 3000,
     },
   };
 }

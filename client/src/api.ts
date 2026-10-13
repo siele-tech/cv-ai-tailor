@@ -3,7 +3,10 @@ import type {
   Dashboard,
   ExtractResult,
   Job,
+  Layout,
+  LayoutResult,
   Profile,
+  RefineResult,
   Status,
   TailorResult,
   Version,
@@ -96,6 +99,17 @@ export const api = {
     form.append('file', file);
     return (await send('/profile/extract', { method: 'POST', body: form })).json() as Promise<ExtractResult>;
   },
+
+  getLayout: () => json<{ layout: Layout }>('/layout'),
+  saveLayout: (layout: Layout) => json<{ layout: Layout }>('/layout', 'PUT', { layout }),
+  extractLayout: async (file: File): Promise<LayoutResult> => {
+    const form = new FormData();
+    form.append('file', file);
+    return (await send('/layout/extract', { method: 'POST', body: form })).json() as Promise<LayoutResult>;
+  },
+
+  refine: (job: Job, content: CvContent, instruction: string) =>
+    json<RefineResult>('/tailor/refine', 'POST', { job, content, instruction }),
 
   tailor: (job: Job) => json<TailorResult>('/tailor', 'POST', job),
   regenerateSummary: (job: Job, currentSummary: string) =>

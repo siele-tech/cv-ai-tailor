@@ -4,6 +4,7 @@ import {
   type Analysis,
   type CvContent,
   type Job,
+  type Layout,
   type Profile,
 } from '../schemas.js';
 import { normalizeProfile } from './normalizeProfile.js';
@@ -43,7 +44,7 @@ function byRelevance<T>(items: T[], textOf: (item: T) => string, terms: string[]
     .map((x) => x.item);
 }
 
-export function demoTailor(profile: Profile, job: Job): { content: CvContent; analysis: Analysis } {
+export function demoTailor(profile: Profile, job: Job, layout?: Layout): { content: CvContent; analysis: Analysis } {
   const facts = profileFacts(profile);
   const jd = `${job.title}\n${job.description}`.toLowerCase();
 
@@ -73,6 +74,7 @@ export function demoTailor(profile: Profile, job: Job): { content: CvContent; an
     certifications: profile.certifications,
     volunteer: profile.volunteer,
     languages: profile.languages,
+    layout,
   });
 
   const relevant = profile.experience

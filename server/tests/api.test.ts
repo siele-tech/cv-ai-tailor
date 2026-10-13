@@ -268,6 +268,63 @@ describe('PDF download', () => {
   });
 });
 
+describe('CV structure and instructions', () => {
+  const custom = { sections: [{ key: 'education', title: 'Academic Background' }, { key: 'skills', title: 'Toolbox', hidden: true }] };
+
+  it('starts with the default structure, then saves and returns a custom one', async () => {
+    const initial = await request(app).get('/api/layout').set(auth());
+    expect(initial.body.layout.sections.map((s: { key: string }) => s.key)[0]).toBe('summary');
+
+    const saved = await request(app).put('/api/layout').set(auth()).send({ layout: custom });
+    expect(saved.status).toBe(200);
+    expect(saved.body.layout.sections).toHaveLength(8);
+
+    const loaded = await request(app).get('/api/layout').set(auth());
+    expect(loaded.body.layout.sections[0]).toEqual({ key: 'education', title: 'Academic Background', hidden: false });
+    expect(loaded.body.layout.sections[1]).toEqual({ key: 'skills', title: 'Toolbox', hidden: true });
+  });
+
+  it('applies the saved structure to newly tailored CVs and keeps it with a saved version', async () => {
+    await saveProfile();
+    await request(app).put('/api/layout').set(auth()).send({ layout: custom });
+    const tailored = await request(app).post('/api/tailor').set(auth()).send({ ...job, instructions: 'Keep it short.' });
+    expect(tailored.body.content.layout.sections[0].title).toBe('Academic Background');
+    expect(tailored.body.job.instructions).toBe('Keep it short.');
+
+    const { job: savedJob, content, analysis, generatedBy } = tailored.body;
+    const created = await request(app).post('/api/versions').set(auth()).send({ job: savedJob, content, analysis, generatedBy });
+    const loaded = await request(app).get(`/api/versions/${created.body.version.id}`).set(auth());
+    expect(loaded.body.version.content.layout.sections[0].title).toBe('Academic Background');
+    expect(loaded.body.version.job.instructions).toBe('Keep it short.');
+  });
+
+  it('reads a structure from an uploaded template without saving it', async () => {
+    const template = await makeDocx(['Jane Template', 'EDUCATION', 'A degree somewhere', 'Key Skills', 'One, Two', 'Career History', 'A role']);
+    const res = await request(app).post('/api/layout/extract').set(auth()).attach('file', template, 'template.docx');
+    expect(res.status).toBe(200);
+    expect(res.body.found).toBe(3);
+    expect(res.body.layout.sections.slice(0, 3).map((s: { title: string }) => s.title)).toEqual(['EDUCATION', 'Key Skills', 'Career History']);
+    expect((await request(app).get('/api/layout').set(auth())).body.layout.sections[0].key).toBe('summary');
+    expect((await request(app).post('/api/layout/extract').set(auth()).attach('file', Buffer.from('x'), 't.txt')).status).toBe(415);
+  });
+
+  it('refuses AI instructions clearly when no AI key is configured', async () => {
+    await saveProfile();
+    const body = { job, content: sampleContent(), instruction: 'Make the summary shorter.' };
+    const res = await request(app).post('/api/tailor/refine').set(auth()).send(body);
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe('ai_not_configured');
+    expect((await request(app).post('/api/tailor/refine').set(auth()).send({ ...body, instruction: '' })).status).toBe(400);
+    expect((await request(app).post('/api/tailor/refine').send(body)).status).toBe(401);
+  });
+
+  it('resets the structure when all data is deleted', async () => {
+    await request(app).put('/api/layout').set(auth()).send({ layout: custom });
+    await request(app).delete('/api/data').set(auth());
+    expect((await request(app).get('/api/layout').set(auth())).body.layout.sections[0].key).toBe('summary');
+  });
+});
+
 describe('configuration', () => {
   it('refuses to start in production without credentials and a database', () => {
     expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(/APP_PASSWORD[\s\S]*JWT_SECRET[\s\S]*MONGODB_URI/);

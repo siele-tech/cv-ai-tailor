@@ -31,8 +31,8 @@ function providerError(status: number): AiError {
   return new AiError(502, 'The AI provider returned an error. Please try again.', 'ai_provider_error');
 }
 
-async function callProvider(config: Config, messages: Message[], jsonMode: boolean): Promise<string> {
-  const body: Record<string, unknown> = { model: config.ai.model, messages };
+async function callProvider(config: Config, model: string, messages: Message[], jsonMode: boolean): Promise<string> {
+  const body: Record<string, unknown> = { model, messages };
   if (jsonMode) body.response_format = { type: 'json_object' };
   if (config.ai.temperature !== undefined) body.temperature = config.ai.temperature;
 
@@ -56,7 +56,7 @@ async function callProvider(config: Config, messages: Message[], jsonMode: boole
     if (jsonMode && response.status === 400) {
       const detail = await response.text().catch(() => '');
       if (/response_format|json_object|json mode/i.test(detail)) {
-        return callProvider(config, messages, false);
+        return callProvider(config, model, messages, false);
       }
     }
     log.warn(`AI provider responded with HTTP ${response.status}`);
@@ -72,6 +72,8 @@ async function callProvider(config: Config, messages: Message[], jsonMode: boole
   }
   return content;
 }
+
+const BUSY_CODES = new Set(['ai_rate_limited', 'ai_provider_error', 'ai_timeout']);
 
 /** Pull a JSON object out of a model reply, tolerating code fences and surrounding prose. */
 export function parseJsonReply(reply: string): unknown {
@@ -90,7 +92,10 @@ export function parseJsonReply(reply: string): unknown {
  * Ask the model for JSON and validate it against `schema`. If the reply does not parse or
  * validate, the model gets one chance to correct it before the request fails.
  */
-export async function chatJson<S extends z.ZodType>(config: Config, options: ChatJsonOptions<S>): Promise<z.infer<S>> {
+export async function chatJson<S extends z.ZodType>(
+  config: Config,
+  options: ChatJsonOptions<S>,
+): Promise<{ data: z.infer<S>; model: string }> {
   if (!aiConfigured(config)) {
     throw new AiError(503, 'No AI API key is configured on the server.', 'ai_not_configured');
   }
@@ -100,12 +105,36 @@ export async function chatJson<S extends z.ZodType>(config: Config, options: Cha
     { role: 'user', content: options.user },
   ];
 
+  // An overloaded, rate-limited or stalled model should not stop the user: move on to the
+  // next model in the list, and when the list runs out, pause briefly and try once more.
+  const models = [config.ai.model, ...config.ai.fallbackModels.filter((m) => m !== config.ai.model)];
+  let current = 0;
+  let waited = false;
+  const ask = async (): Promise<string> => {
+    for (;;) {
+      try {
+        return await callProvider(config, models[current] ?? config.ai.model, messages, config.ai.jsonMode);
+      } catch (err) {
+        if (!(err instanceof AiError) || !BUSY_CODES.has(err.code)) throw err;
+        if (current < models.length - 1) {
+          current++;
+          log.warn('AI model unavailable; trying the next configured model');
+        } else if (!waited && err.code !== 'ai_timeout') {
+          waited = true;
+          await new Promise((resolve) => setTimeout(resolve, config.ai.retryDelayMs));
+        } else {
+          throw err;
+        }
+      }
+    }
+  };
+
   for (let attempt = 0; attempt < 2; attempt++) {
-    const reply = await callProvider(config, messages, config.ai.jsonMode);
+    const reply = await ask();
     let problem: string;
     try {
       const result = options.schema.safeParse(parseJsonReply(reply));
-      if (result.success) return result.data;
+      if (result.success) return { data: result.data, model: models[current] ?? config.ai.model };
       problem = describeIssues(result.error).join('; ');
     } catch {
       problem = 'the reply was not a single valid JSON object';

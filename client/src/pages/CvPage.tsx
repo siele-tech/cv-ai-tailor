@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, errorMessage, saveBlob } from '../api';
+import { AiChat } from '../components/AiChat';
 import { AnalysisPanel } from '../components/AnalysisPanel';
 import { CvPreview } from '../components/CvPreview';
 import {
@@ -14,8 +15,9 @@ import {
   SkillsFields,
   VolunteerList,
 } from '../components/editors';
+import { LayoutEditor } from '../components/LayoutEditor';
 import { Button, EmptyState, Field, Icon, LoadingBlock, Notice, TextArea, type IconName } from '../components/ui';
-import { useDraft, useToast } from '../state';
+import { useDraft, useSession, useToast } from '../state';
 import type { CvContent, Job } from '../types';
 
 type Tab = 'preview' | 'edit' | 'match';
@@ -30,10 +32,17 @@ export function CvPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { draft, setDraft, editDraft } = useDraft();
+  const { status } = useSession();
+  const chatInput = useRef<HTMLTextAreaElement>(null);
 
   const [tab, setTab] = useState<Tab>('preview');
   const [loadError, setLoadError] = useState('');
-  const [busy, setBusy] = useState<'pdf' | 'save' | 'summary' | null>(null);
+  const [busy, setBusy] = useState<'pdf' | 'save' | 'summary' | 'chat' | 'master' | null>(null);
+  const [instruction, setInstruction] = useState('');
+  // Skills the user just told the AI about that their master CV does not list yet.
+  const [newSkills, setNewSkills] = useState<string[]>([]);
+  // Skills the user chose not to add to the master CV; do not ask again in this session.
+  const declinedSkills = useRef(new Set<string>());
   const [summaryNote, setSummaryNote] = useState<string[]>([]);
   // Remounts the editor when its content is replaced from outside (a regenerated summary).
   const [editorKey, setEditorKey] = useState(0);
@@ -121,10 +130,10 @@ export function CvPage() {
     }
     setBusy('save');
     try {
-      const { id: existingId, dirty: _dirty, ...body } = draft!;
+      const { id: existingId, dirty: _dirty, chat: _chat, ...body } = draft!;
       const { version } = existingId ? await api.updateVersion(existingId, body) : await api.createVersion(body);
       const { createdAt: _c, updatedAt: _u, ...rest } = version;
-      setDraft({ ...rest, dirty: false });
+      setDraft({ ...rest, chat: draft!.chat, dirty: false });
       toast('success', existingId ? 'Changes saved.' : 'Saved to your history.');
       if (!existingId) navigate(`/cv/${version.id}`, { replace: true });
     } catch (err) {
@@ -148,6 +157,55 @@ export function CvPage() {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function sendInstruction() {
+    const text = instruction.trim();
+    setBusy('chat');
+    try {
+      const result = await api.refine(draft!.job, draft!.content, text);
+      setDraft({
+        ...draft!,
+        content: result.content,
+        analysis: result.analysis,
+        generatedBy: 'ai',
+        aiModel: result.aiModel,
+        chat: [...(draft!.chat ?? []), { from: 'you', text }, { from: 'ai', text: result.reply }],
+        dirty: true,
+      });
+      setInstruction('');
+      setEditorKey((k) => k + 1);
+      setNewSkills(result.newSkills.filter((skill) => !declinedSkills.current.has(skill)));
+      toast('success', 'CV updated. Check the preview.');
+    } catch (err) {
+      toast('error', errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Keep a skill the user vouched for, so future CVs can use it too. */
+  async function addSkillsToMaster() {
+    setBusy('master');
+    try {
+      const { profile } = await api.getProfile();
+      if (!profile) throw new Error('no profile');
+      const known = new Set(profile.skills.technical.map((s) => s.toLowerCase()));
+      const additions = newSkills.filter((s) => !known.has(s.toLowerCase()));
+      await api.saveProfile({ ...profile, skills: { ...profile.skills, technical: [...profile.skills.technical, ...additions] } });
+      toast('success', `Added ${newSkills.join(', ')} to your master CV.`);
+      setNewSkills([]);
+    } catch (err) {
+      toast('error', errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function addressGap(skill: string) {
+    setInstruction(`I have real experience with ${skill}: `);
+    chatInput.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => chatInput.current?.focus(), 300);
   }
 
   const saveState = !draft.id ? 'Not saved' : draft.dirty ? 'Unsaved changes' : 'Saved';
@@ -186,6 +244,38 @@ export function CvPage() {
           {summaryNote.map((note, i) => (
             <p key={i}>{note}</p>
           ))}
+        </Notice>
+      )}
+
+      <AiChat
+        aiConfigured={status?.aiConfigured ?? true}
+        messages={draft.chat ?? []}
+        value={instruction}
+        onChange={setInstruction}
+        onSend={sendInstruction}
+        busy={busy === 'chat'}
+        disabled={busy !== null}
+        inputRef={chatInput}
+      />
+
+      {newSkills.length > 0 && (
+        <Notice kind="info" title={`Add ${newSkills.join(', ')} to your master CV?`}>
+          <p>You told the AI about {newSkills.length === 1 ? 'this skill' : 'these skills'}, so {newSkills.length === 1 ? 'it is' : 'they are'} on this CV. Your master CV does not list {newSkills.length === 1 ? 'it' : 'them'} yet, so future CVs will not know.</p>
+          <div className="mt-2.5 grid grid-cols-2 gap-2">
+            <Button size="sm" variant="primary" onClick={addSkillsToMaster} loading={busy === 'master'} disabled={busy !== null}>
+              Add to master CV
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                newSkills.forEach((skill) => declinedSkills.current.add(skill));
+                setNewSkills([]);
+              }}
+              disabled={busy !== null}
+            >
+              Not now
+            </Button>
+          </div>
         </Notice>
       )}
 
@@ -248,13 +338,17 @@ export function CvPage() {
           <Section title="Contact details">
             <ContactFields value={content.contact} onChange={(contact) => setContent({ contact })} />
           </Section>
+          <Section title="Structure: section order and headings">
+            <p className="text-sm leading-relaxed text-slate-600">Applies to this CV only. Set your default structure on the Master CV page.</p>
+            <LayoutEditor value={content.layout} onChange={(layout) => setContent({ layout })} />
+          </Section>
           <Button variant="primary" icon="eye" className="w-full" onClick={() => { setTab('preview'); window.scrollTo(0, 0); }}>
             Preview changes
           </Button>
         </div>
       )}
 
-      {tab === 'match' && <AnalysisPanel analysis={draft.analysis} generatedBy={draft.generatedBy} />}
+      {tab === 'match' && <AnalysisPanel analysis={draft.analysis} generatedBy={draft.generatedBy} onAddressGap={status?.aiConfigured ? addressGap : undefined} />}
 
       <p className="pt-2 text-center text-sm">
         <Link to="/" className="font-medium text-brand-700 underline underline-offset-2">

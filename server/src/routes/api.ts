@@ -13,17 +13,20 @@ import { User } from '../models/User.js';
 import {
   jobSchema,
   loginSchema,
+  parseLayout,
   pdfRequestSchema,
   profileSchema,
+  refineRequestSchema,
   regenerateSummarySchema,
   versionInputSchema,
+  type Layout,
   type Profile,
 } from '../schemas.js';
 import { sampleProfile } from '../services/demo.js';
 import { detectKind, extractText } from '../services/extractText.js';
 import { profileIsUsable } from '../services/normalizeProfile.js';
 import { cvFilename, renderCvPdf } from '../services/pdf.js';
-import { extractProfile, regenerateSummary, tailorCv } from '../services/tailor.js';
+import { extractLayout, extractProfile, refineCv, regenerateSummary, tailorCv } from '../services/tailor.js';
 
 const OWNER_USERNAME = 'owner';
 
@@ -41,6 +44,12 @@ async function loadProfile(ownerId: string): Promise<Profile> {
     throw new HttpError(409, 'Add your experience, skills or education to your master profile before tailoring a CV.', 'profile_required');
   }
   return profile;
+}
+
+/** The owner's preferred CV structure, or the default one. */
+async function loadLayout(ownerId: string): Promise<Layout> {
+  const owner = await User.findById(ownerId).select('layout').lean();
+  return parseLayout(owner?.layout);
 }
 
 export function apiRouter(config: Config): Router {
@@ -132,7 +141,27 @@ export function apiRouter(config: Config): Router {
     res.json(await extractProfile(config, text));
   });
 
+  router.post('/layout/extract', aiLimiter, upload.single('file'), async (req, res) => {
+    if (!req.file) throw badRequest('Choose a PDF or DOCX file to upload.');
+    const kind = detectKind(req.file.buffer, req.file.originalname);
+    const text = await extractText(req.file.buffer, kind);
+    // Only the headings are used. The document's content is discarded and nothing is saved here.
+    res.json(await extractLayout(config, text));
+  });
+
   router.use(requireDb);
+
+  // ---------- CV structure ----------
+
+  router.get('/layout', async (req, res) => {
+    res.json({ layout: await loadLayout(ownerIdOf(req)) });
+  });
+
+  router.put('/layout', async (req, res) => {
+    const layout = parseLayout((req.body as { layout?: unknown } | undefined)?.layout);
+    await User.updateOne({ _id: ownerIdOf(req) }, { $set: { layout } });
+    res.json({ layout });
+  });
 
   // ---------- master profile ----------
 
@@ -160,8 +189,15 @@ export function apiRouter(config: Config): Router {
 
   router.post('/tailor', aiLimiter, async (req, res) => {
     const job = jobSchema.parse(req.body);
+    const ownerId = ownerIdOf(req);
+    const [profile, layout] = await Promise.all([loadProfile(ownerId), loadLayout(ownerId)]);
+    res.json({ job, ...(await tailorCv(config, profile, job, layout)) });
+  });
+
+  router.post('/tailor/refine', aiLimiter, async (req, res) => {
+    const { job, content, instruction } = refineRequestSchema.parse(req.body);
     const profile = await loadProfile(ownerIdOf(req));
-    res.json({ job, ...(await tailorCv(config, profile, job)) });
+    res.json({ job, ...(await refineCv(config, profile, job, content, instruction)) });
   });
 
   router.post('/tailor/summary', aiLimiter, async (req, res) => {
@@ -241,7 +277,11 @@ export function apiRouter(config: Config): Router {
   /** Erase everything stored for the owner: master profile and every saved CV version. */
   router.delete('/data', async (req, res) => {
     const ownerId = ownerIdOf(req);
-    const [versions] = await Promise.all([TailoredCv.deleteMany({ ownerId }), MasterProfile.deleteOne({ ownerId })]);
+    const [versions] = await Promise.all([
+      TailoredCv.deleteMany({ ownerId }),
+      MasterProfile.deleteOne({ ownerId }),
+      User.updateOne({ _id: ownerId }, { $unset: { layout: 1 } }),
+    ]);
     res.json({ deletedVersions: versions.deletedCount });
   });
 

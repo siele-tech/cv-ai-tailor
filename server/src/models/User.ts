@@ -6,6 +6,8 @@ const userSchema = new Schema(
   {
     username: { type: String, required: true, unique: true, trim: true, maxlength: 60 },
     lastLoginAt: { type: Date },
+    // Preferred CV structure (section order and heading names). Parsed with parseLayout() on read.
+    layout: { type: Schema.Types.Mixed },
   },
   { timestamps: true },
 );

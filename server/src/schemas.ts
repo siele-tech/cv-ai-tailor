@@ -119,6 +119,65 @@ export const EMPHASES = [
   'DevOps',
 ] as const;
 
+// ---------- CV structure (section order and heading names) ----------
+
+export const SECTION_KEYS = [
+  'summary',
+  'skills',
+  'experience',
+  'projects',
+  'education',
+  'certifications',
+  'volunteer',
+  'languages',
+] as const;
+export type SectionKey = (typeof SECTION_KEYS)[number];
+
+export const DEFAULT_SECTION_TITLES: Record<SectionKey, string> = {
+  summary: 'Professional Summary',
+  skills: 'Skills',
+  experience: 'Professional Experience',
+  projects: 'Projects',
+  education: 'Education',
+  certifications: 'Certifications & Training',
+  volunteer: 'Volunteer Experience',
+  languages: 'Languages',
+};
+
+export interface LayoutSection {
+  key: SectionKey;
+  title: string;
+  hidden: boolean;
+}
+export interface Layout {
+  sections: LayoutSection[];
+}
+
+const isSectionKey = (value: unknown): value is SectionKey =>
+  typeof value === 'string' && (SECTION_KEYS as readonly string[]).includes(value);
+
+/**
+ * Tolerant: any input becomes a complete layout. Every section appears exactly once, so a
+ * structure that omits a section can never make CV content disappear silently.
+ */
+export function parseLayout(input: unknown): Layout {
+  const raw = (input as { sections?: unknown } | null | undefined)?.sections;
+  const sections: LayoutSection[] = [];
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const entry = (item ?? {}) as { key?: unknown; title?: unknown; hidden?: unknown };
+    if (!isSectionKey(entry.key) || sections.some((s) => s.key === entry.key)) continue;
+    const title = typeof entry.title === 'string' ? entry.title.replace(/\s+/g, ' ').trim().slice(0, 60) : '';
+    sections.push({ key: entry.key, title: title || DEFAULT_SECTION_TITLES[entry.key], hidden: entry.hidden === true });
+  }
+  for (const key of SECTION_KEYS) {
+    if (!sections.some((s) => s.key === key)) sections.push({ key, title: DEFAULT_SECTION_TITLES[key], hidden: false });
+  }
+  return { sections };
+}
+
+// Optional on input: CVs saved before structures existed simply get the default one.
+export const layoutSchema = z.unknown().optional().transform(parseLayout);
+
 export const jobSchema = z.object({
   title: z.string().trim().min(1, 'Job title is required').max(160),
   company: text(160),
@@ -129,6 +188,8 @@ export const jobSchema = z.object({
     .max(20_000, 'Job description is too long (20,000 characters max)'),
   url: text(600),
   emphasis: z.enum(EMPHASES).default('General IT'),
+  /** The candidate's own guidance for this CV ("keep it to one page", "stress my API work"). */
+  instructions: text(2000),
 });
 export type Job = z.infer<typeof jobSchema>;
 
@@ -160,6 +221,8 @@ export const cvContentSchema = z.object({
   certifications: z.array(certificationSchema).max(60).default([]),
   volunteer: z.array(volunteerSchema).max(20).default([]),
   languages: z.array(languageSchema).max(20).default([]),
+  /** Each CV carries its own copy of the structure, so versions stay independent. */
+  layout: layoutSchema,
 });
 export type CvContent = z.infer<typeof cvContentSchema>;
 
@@ -245,6 +308,27 @@ export const aiTailorSchema = z.object({
 export type AiTailorOutput = z.infer<typeof aiTailorSchema>;
 
 export const aiSummarySchema = z.object({ summary: z.string().trim().min(1).max(3000) });
+
+/** A refinement is the same proposal plus a short note to the user and an optional new order. */
+export const aiRefineSchema = aiTailorSchema.extend({
+  reply: looseText,
+  sectionOrder: looseList.optional(),
+});
+export type AiRefineOutput = z.infer<typeof aiRefineSchema>;
+
+export const aiLayoutSchema = z.object({
+  sections: z
+    .array(z.object({ key: z.string(), title: looseText }))
+    .max(30)
+    .default([]),
+});
+
+export const refineRequestSchema = z.object({
+  job: jobSchema,
+  content: cvContentSchema,
+  analysis: analysisSchema.default(emptyAnalysis),
+  instruction: z.string().trim().min(2, 'Type an instruction for the AI').max(2000),
+});
 
 /** Zod issues flattened to short, user-presentable strings. */
 export function describeIssues(error: z.ZodError): string[] {

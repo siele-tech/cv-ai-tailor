@@ -96,6 +96,8 @@ export interface Job {
   description: string;
   url: string;
   emphasis: Emphasis;
+  /** Your own guidance to the AI for this CV. */
+  instructions: string;
 }
 
 export interface CvExperience {
@@ -108,6 +110,38 @@ export interface CvExperience {
   bullets: string[];
 }
 
+export const SECTION_KEYS = ['summary', 'skills', 'experience', 'projects', 'education', 'certifications', 'volunteer', 'languages'] as const;
+export type SectionKey = (typeof SECTION_KEYS)[number];
+
+/** What each section holds, whatever heading it is given. */
+export const SECTION_NAMES: Record<SectionKey, string> = {
+  summary: 'Summary',
+  skills: 'Skills',
+  experience: 'Experience',
+  projects: 'Projects',
+  education: 'Education',
+  certifications: 'Certifications',
+  volunteer: 'Volunteer experience',
+  languages: 'Languages',
+};
+
+export interface LayoutSection {
+  key: SectionKey;
+  title: string;
+  hidden: boolean;
+}
+
+/** Section order and heading names of a CV. */
+export interface Layout {
+  sections: LayoutSection[];
+}
+
+export interface LayoutResult {
+  layout: Layout;
+  found: number;
+  method: 'ai' | 'basic';
+}
+
 export interface CvContent {
   contact: Contact;
   summary: string;
@@ -118,6 +152,7 @@ export interface CvContent {
   certifications: Certification[];
   volunteer: Volunteer[];
   languages: Language[];
+  layout: Layout;
 }
 
 export interface Analysis {
@@ -182,11 +217,36 @@ export interface ExtractResult {
 }
 
 /** The CV currently open in the editor. `id` is set once it has been saved as a version. */
+export interface ChatMessage {
+  from: 'you' | 'ai';
+  text: string;
+}
+
+export interface RefineResult extends TailorResult {
+  reply: string;
+  newSkills: string[];
+}
+
 export interface Draft extends TailorResult {
   id?: string;
+  /** This session's instructions to the AI and its replies. Not stored with the version. */
+  chat?: ChatMessage[];
   /** True when there are edits that have not been saved to the version history. */
   dirty: boolean;
 }
+
+export const defaultLayout = (): Layout => ({
+  sections: [
+    { key: 'summary', title: 'Professional Summary', hidden: false },
+    { key: 'skills', title: 'Skills', hidden: false },
+    { key: 'experience', title: 'Professional Experience', hidden: false },
+    { key: 'projects', title: 'Projects', hidden: false },
+    { key: 'education', title: 'Education', hidden: false },
+    { key: 'certifications', title: 'Certifications & Training', hidden: false },
+    { key: 'volunteer', title: 'Volunteer Experience', hidden: false },
+    { key: 'languages', title: 'Languages', hidden: false },
+  ],
+});
 
 export const newId = (): string =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto

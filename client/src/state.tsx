@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, getToken, setToken, setUnauthorizedHandler } from './api';
-import type { Draft, Status } from './types';
+import { defaultLayout, type Draft, type Status } from './types';
 
 // ---------- toasts ----------
 
@@ -87,7 +87,11 @@ export function useDraft(): DraftStore {
 function readDraft(): Draft | null {
   try {
     const raw = sessionStorage.getItem(DRAFT_KEY);
-    return raw ? (JSON.parse(raw) as Draft) : null;
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as Draft;
+    // Drafts stored before CV structures existed have no layout.
+    if (!draft.content.layout?.sections?.length) draft.content.layout = defaultLayout();
+    return draft;
   } catch {
     return null;
   }

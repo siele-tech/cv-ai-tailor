@@ -2,7 +2,13 @@
 
 A mobile-first web app that turns your master CV plus a job description into a tailored, ATS-friendly CV you can preview, edit and download as a PDF from your phone.
 
-**Workflow:** upload your CV (PDF or DOCX) or type it in → review and save your master CV → paste a job description → **Tailor My CV** → preview, edit, check the job-match analysis → download the PDF → save the version to your history.
+**Workflow:** upload your CV (PDF or DOCX) or type it in → review and save your master CV → paste a job description → **Tailor My CV** → preview, edit, tell the AI what to change, check the job-match analysis → download the PDF → save the version to your history.
+
+Three things shape the result:
+
+- **Your CV structure.** On the Master CV page, upload a CV or template laid out the way you like. Its section order and heading names are applied to every new CV (its fonts and graphics are not copied). You can also reorder, rename and hide sections by hand, per CV or as your default.
+- **Instructions to the AI.** Before generating, add guidance on the Tailor form. Afterwards, use the "Tell the AI what to change" box on the CV screen ("make the summary shorter", "put education first", "I used Kafka at my current job for event streaming, add it").
+- **Closing gaps truthfully.** The Job match tab lists what the job wants that your CV does not show. Tap one, tell the AI where you really used it, and it is added and the score re-estimated. A score of 100 is reachable only when your real experience covers every requirement; the app will not invent experience to get there.
 
 The app tailors what is true. It never adds employers, dates, qualifications, figures or skills that are not in your master CV (see [How truthfulness is enforced](#how-truthfulness-is-enforced)).
 
@@ -80,8 +86,9 @@ All secrets live on the server. Nothing secret is compiled into the frontend. Se
 | `AI_API_KEY` | for real AI | API key for the AI provider. Empty means demo mode. |
 | `AI_BASE_URL` | no | OpenAI-compatible base URL. Default `https://api.openai.com/v1`. |
 | `AI_MODEL` | no | Chat model name. Default `gpt-4o-mini`. |
+| `AI_FALLBACK_MODELS` | no | Comma-separated models tried in order when the main one is overloaded, rate-limited or too slow. Useful on free tiers. |
 | `AI_JSON_MODE` | no | `false` if the provider rejects `response_format: json_object` (the server also retries without it automatically). |
-| `AI_TEMPERATURE`, `AI_TIMEOUT_MS` | no | Sampling temperature (unset uses the model default) and request timeout (default 120000). |
+| `AI_TEMPERATURE`, `AI_TIMEOUT_MS` | no | Sampling temperature (unset uses the model default) and request timeout (default 75000). |
 | `PORT` | no | Listening port. Render sets it. Default 4000. |
 | `CORS_ORIGINS` | split deploys only | Comma-separated origins allowed to call the API from another domain. Empty means same-origin only. |
 | `SERVE_CLIENT` | no | `false` to run as an API only. |
@@ -147,7 +154,7 @@ git push -u origin main
 **Option A, Blueprint (uses [render.yaml](render.yaml)):**
 
 1. In Render: **New → Blueprint**, connect your GitHub account and select the repository.
-2. Render reads `render.yaml` and asks for the values marked as secrets: `MONGODB_URI`, `APP_PASSWORD`, `AI_API_KEY`. `JWT_SECRET` is generated for you.
+2. Render reads `render.yaml` and asks for the values marked as secrets: `MONGODB_URI`, `APP_PASSWORD`, `AI_API_KEY`. `JWT_SECRET` is generated for you. The file is preset for Google Gemini (`AI_BASE_URL`, `AI_MODEL`, `AI_FALLBACK_MODELS`); edit those three lines in `render.yaml` if you use another provider. Values written in `render.yaml` are re-applied when the blueprint syncs, so change them there rather than in the dashboard.
 3. Apply. The first build takes a few minutes.
 
 **Option B, manual:**
@@ -210,7 +217,7 @@ Prompting alone is not trusted. There are three layers:
    - The summary is checked the same way; problems are shown under "Check before sending" rather than silently kept.
    - "Keywords included" only lists terms that really appear in the final CV.
 
-Your manual edits are not policed: once you edit the CV, what it says is up to you.
+**What you say counts as fact.** You are the authority on your own experience. Text you type in the editor, in the Tailor form's instructions, or in an instruction to the AI is treated as true alongside your master CV, so "I used Kafka at Example Ltd for event streaming" lets Kafka appear. An instruction such as "add Kubernetes" or "make the score 100", with nothing behind it, is declined by the prompt, and anything the model adds anyway is still removed by the checks above. Your manual edits are not policed: once you edit the CV, what it says is up to you.
 
 The job-match score is an AI estimate (or a keyword-overlap estimate in demo mode). It is labelled as such in the app. It is not an ATS result.
 
@@ -232,11 +239,12 @@ The job-match score is an AI estimate (or a keyword-overlap estimate in demo mod
 npm test
 ```
 
-89 backend tests (Vitest) covering:
+111 backend tests (Vitest) covering:
 
 - PDF and DOCX text extraction; unsupported, disguised, corrupted, empty and oversized files.
 - The AI client against a local OpenAI-compatible mock server: valid replies, schema violations and the correction retry, provider errors (401, 404, 429, 500), empty replies, unreachable provider, timeouts, missing API key (demo mode).
 - Prompt-injection handling and the factual safeguards.
+- CV structures (reading a template, order, renamed and hidden sections in the PDF), AI instructions (stated facts accepted, unstated ones rejected, facts never altered), and failover between models.
 - PDF generation for short, long (multi-page) and nearly empty CVs, edited content, special characters, filename sanitising.
 - The HTTP API with a real (in-memory) MongoDB: authentication on every protected route, profile validation, tailoring, saving, loading, updating and deleting versions, version isolation, delete-all, CORS, production config checks, and behaviour when the database goes away.
 
@@ -252,7 +260,9 @@ The first run downloads a MongoDB binary for the in-memory test database.
 - **Extraction is never perfect.** Multi-column or heavily designed CVs can extract out of order. Always review the form before saving. The no-AI basic parser is much rougher than the AI one.
 - **The safeguards are conservative, not omniscient.** They match text, so they can remove a legitimate bullet (for example when the AI writes "10 engineers" and your CV says "ten"), and they cannot detect every subtle exaggeration in wording. Read the CV before sending it; the "Check before sending" list shows what was removed and why.
 - **PDF fonts.** The PDF uses the standard Helvetica family for maximum ATS compatibility. Western European characters are supported; other Latin letters are transliterated (ł becomes l) and non-Latin scripts are not supported.
-- **One PDF template**, A4. The on-screen preview mirrors its content and order, not its exact page breaks.
+- **One visual design**, A4. An uploaded structure changes section order and heading names only; fonts, colours, columns and graphics of the uploaded file are not reproduced. The on-screen preview mirrors content and order, not exact page breaks.
+- **AI instructions change wording, skills and section order.** Adding or removing roles and projects, and changing titles, employers or dates, is done in the Edit tab. The chat history is not saved with a version.
+- **Free AI tiers are unreliable at busy times.** Models can report overload or respond slowly; `AI_FALLBACK_MODELS` softens this, and a failed request can simply be retried.
 - **Job posting URL** is stored for reference only. The app does not fetch job pages.
 - **Offline.** The installed app opens offline, but everything useful needs the server.
 - **Free hosting** has cold starts and usage limits. A long AI request on a sleeping service can occasionally time out; retry once it is awake.

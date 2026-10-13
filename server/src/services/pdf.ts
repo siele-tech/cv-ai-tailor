@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import type { CvContent } from '../schemas.js';
+import type { CvContent, SectionKey } from '../schemas.js';
 
 // ATS-friendly CV: single column, real (selectable) text, standard fonts, no graphics
 // beyond thin rules under headings. Layout is done block by block so that headings are
@@ -134,7 +134,7 @@ export function renderCvPdf(content: CvContent): Promise<Buffer> {
       doc.moveDown(0.75);
       ensure(SIZE.heading + 12 + keepWith);
       use({ font: FONT.bold, size: SIZE.heading, color: ACCENT });
-      doc.text(label.toUpperCase(), left, doc.y, { width, characterSpacing: 0.8 });
+      doc.text(pdfSafe(label).toUpperCase(), left, doc.y, { width, characterSpacing: 0.8 });
       const y = doc.y + 1.5;
       doc.moveTo(left, y).lineTo(left + width, y).lineWidth(0.7).strokeColor(RULE).stroke();
       doc.y = y + 6;
@@ -157,20 +157,25 @@ export function renderCvPdf(content: CvContent): Promise<Buffer> {
     paragraph(contactLine, { size: SIZE.contact, color: MUTED });
     paragraph(linkLine, { size: SIZE.contact, color: MUTED });
 
-    // ---------- summary ----------
+    // ---------- sections, in the order and with the headings of the CV's own structure ----------
+    const render = {} as Record<SectionKey, (title: string) => void>;
+
+    render.summary = (title) => {
     if (content.summary.trim()) {
-      heading('Professional Summary', Math.min(heightOf(pdfSafe(content.summary), width), 60));
+      heading(title, Math.min(heightOf(pdfSafe(content.summary), width), 60));
       paragraph(content.summary);
     }
 
-    // ---------- skills ----------
+    };
+
+    render.skills = (title) => {
     const skillRows: [string, string[]][] = [
       ['Technical', content.skills.technical],
       ['Soft skills', content.skills.soft],
     ];
     const shownSkills = skillRows.filter(([, items]) => items.length > 0);
     if (shownSkills.length) {
-      heading('Skills', ROW * 2);
+      heading(title, ROW * 2);
       for (const [label, items] of shownSkills) {
         const text = pdfSafe(items.join(', '));
         ensure(Math.min(heightOf(`${label}: ${text}`, width), 120));
@@ -182,10 +187,12 @@ export function renderCvPdf(content: CvContent): Promise<Buffer> {
       }
     }
 
-    // ---------- experience ----------
+    };
+
+    render.experience = (title) => {
     if (content.experience.length) {
       const first = content.experience[0];
-      heading('Professional Experience', ROW * 2 + (first?.bullets[0] ? bulletHeight(first.bullets[0]) : 0));
+      heading(title, ROW * 2 + (first?.bullets[0] ? bulletHeight(first.bullets[0]) : 0));
       content.experience.forEach((exp, index) => {
         if (index > 0) doc.moveDown(0.55);
         // Keep the role header together with its first bullet.
@@ -197,9 +204,11 @@ export function renderCvPdf(content: CvContent): Promise<Buffer> {
       });
     }
 
-    // ---------- projects ----------
+    };
+
+    render.projects = (title) => {
     if (content.projects.length) {
-      heading('Projects', ROW * 3);
+      heading(title, ROW * 3);
       content.projects.forEach((project, index) => {
         if (index > 0) doc.moveDown(0.45);
         const body = pdfSafe(project.description);
@@ -213,9 +222,11 @@ export function renderCvPdf(content: CvContent): Promise<Buffer> {
       });
     }
 
-    // ---------- education ----------
+    };
+
+    render.education = (title) => {
     if (content.education.length) {
-      heading('Education', ROW * 2);
+      heading(title, ROW * 2);
       content.education.forEach((edu, index) => {
         if (index > 0) doc.moveDown(0.4);
         ensure(ROW * 2);
@@ -225,17 +236,21 @@ export function renderCvPdf(content: CvContent): Promise<Buffer> {
       });
     }
 
-    // ---------- certifications ----------
+    };
+
+    render.certifications = (title) => {
     if (content.certifications.length) {
-      heading('Certifications & Training', ROW);
+      heading(title, ROW);
       for (const cert of content.certifications) {
         bullet(joinParts([cert.name, cert.issuer, cert.date], ', '));
       }
     }
 
-    // ---------- volunteer ----------
+    };
+
+    render.volunteer = (title) => {
     if (content.volunteer.length) {
-      heading('Volunteer Experience', ROW * 2);
+      heading(title, ROW * 2);
       content.volunteer.forEach((vol, index) => {
         if (index > 0) doc.moveDown(0.4);
         ensure(ROW * 2);
@@ -245,12 +260,19 @@ export function renderCvPdf(content: CvContent): Promise<Buffer> {
       });
     }
 
-    // ---------- languages ----------
+    };
+
+    render.languages = (title) => {
     if (content.languages.length) {
-      heading('Languages', ROW);
+      heading(title, ROW);
       paragraph(
         content.languages.map((l) => (l.proficiency ? `${l.name} (${l.proficiency})` : l.name)).join(', '),
       );
+    }
+    };
+
+    for (const section of content.layout.sections) {
+      if (!section.hidden) render[section.key](section.title);
     }
 
     // ---------- page numbers (only when there is more than one page) ----------

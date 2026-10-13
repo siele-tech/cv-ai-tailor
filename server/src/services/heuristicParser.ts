@@ -1,4 +1,4 @@
-import type { Profile } from '../schemas.js';
+import { parseLayout, type Layout, type Profile } from '../schemas.js';
 import { normalizeProfile } from './normalizeProfile.js';
 
 // Rule-based CV parsing used when no AI key is configured. It is intentionally modest:
@@ -45,6 +45,20 @@ function headingOf(line: string): SectionKey | undefined {
   const cleaned = line.replace(/[:\-–—_|]+\s*$/, '').replace(/\s+/g, ' ').trim().toLowerCase();
   if (!cleaned || cleaned.length > 45) return undefined;
   return HEADINGS.find(([, re]) => re.test(cleaned))?.[0];
+}
+
+/**
+ * Read the section order and heading wording from any CV-like text (a template or a sample CV).
+ * Sections the document does not have keep their default name and go to the end.
+ */
+export function detectLayout(text: string): { layout: Layout; found: number } {
+  const sections: { key: string; title: string }[] = [];
+  for (const line of text.split('\n')) {
+    const key = headingOf(line);
+    if (!key || key === 'ignored' || sections.some((s) => s.key === key)) continue;
+    sections.push({ key, title: line.replace(/[:\-–—_|]+\s*$/, '').replace(/\s+/g, ' ').trim() });
+  }
+  return { layout: parseLayout({ sections }), found: sections.length };
 }
 
 const stripBullet = (line: string) => line.replace(BULLET, '').trim();

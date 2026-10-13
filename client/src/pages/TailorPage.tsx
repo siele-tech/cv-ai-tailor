@@ -9,7 +9,7 @@ const FORM_KEY = 'cvt_job_form';
 const MIN_DESCRIPTION = 40;
 const MAX_DESCRIPTION = 20_000;
 
-const blankJob = (): Job => ({ title: '', company: '', description: '', url: '', emphasis: 'General IT' });
+const blankJob = (): Job => ({ title: '', company: '', description: '', url: '', emphasis: 'General IT', instructions: '' });
 
 function readForm(): Job {
   try {
@@ -71,7 +71,7 @@ export function TailorPage() {
     setBusy(true);
     setFailure('');
     try {
-      const result = await api.tailor({ ...job, title: job.title.trim(), company: job.company.trim(), description: job.description.trim(), url: job.url.trim() });
+      const result = await api.tailor({ ...job, title: job.title.trim(), company: job.company.trim(), description: job.description.trim(), url: job.url.trim(), instructions: job.instructions.trim() });
       setDraft({ ...result, dirty: false });
       sessionStorage.removeItem(FORM_KEY);
       toast('success', result.generatedBy === 'ai' ? 'Your tailored CV is ready.' : 'Demo CV ready (no AI was used).');
@@ -142,6 +142,15 @@ export function TailorPage() {
           error={errors.description}
           placeholder="Paste the full job description here…"
           hint={`${length.toLocaleString()} / ${MAX_DESCRIPTION.toLocaleString()} characters`}
+        />
+        <TextArea
+          label="Instructions for the AI (optional)"
+          rows={3}
+          value={job.instructions}
+          onChange={(instructions) => set({ instructions })}
+          placeholder="e.g. Keep it to one page. Emphasise my API and payments work. I also used Kafka at my current job for event streaming."
+          hint="Style, emphasis, or true facts about you that are not in your master CV yet."
+          maxLength={2000}
         />
         <Field label="Job posting link (optional)" inputMode="url" value={job.url} onChange={(url) => set({ url })} hint="Saved for your reference only. The page is not opened or read." maxLength={600} />
       </Card>

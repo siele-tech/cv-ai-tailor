@@ -11,6 +11,7 @@ import {
   SkillsFields,
   VolunteerList,
 } from '../components/editors';
+import { StructureSettings } from '../components/LayoutEditor';
 import { Button, Card, ConfirmDialog, LoadingBlock, Notice, PageTitle, Progress, TextArea } from '../components/ui';
 import { useSession, useToast } from '../state';
 import { emptyProfile, type ExtractResult, type Profile } from '../types';
@@ -183,6 +184,10 @@ export function ProfilePage() {
           )}
         </div>
       </Card>
+
+      <Section title="CV structure">
+        <StructureSettings />
+      </Section>
 
       {extracted && (
         <Notice kind={extracted.method === 'ai' ? 'info' : 'warn'} title={extracted.method === 'ai' ? 'Review what was extracted' : 'Extracted with the basic reader'}>

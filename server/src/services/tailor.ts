@@ -1,26 +1,35 @@
 import { z } from 'zod';
 import { aiConfigured, type Config } from '../config.js';
+import { HttpError } from '../errors.js';
 import {
+  aiLayoutSchema,
+  aiRefineSchema,
   aiSummarySchema,
   aiTailorSchema,
+  parseLayout,
   type Analysis,
   type CvContent,
   type Job,
+  type Layout,
   type Profile,
 } from '../schemas.js';
 import { chatJson } from './ai/client.js';
 import {
   EXTRACT_SYSTEM_PROMPT,
+  LAYOUT_SYSTEM_PROMPT,
+  REFINE_SYSTEM_PROMPT,
   SUMMARY_SYSTEM_PROMPT,
   TAILOR_SYSTEM_PROMPT,
   extractUserPrompt,
+  layoutUserPrompt,
+  refineUserPrompt,
   summaryUserPrompt,
   tailorUserPrompt,
 } from './ai/prompts.js';
 import { demoTailor } from './demo.js';
-import { parseCvHeuristically } from './heuristicParser.js';
+import { detectLayout, parseCvHeuristically } from './heuristicParser.js';
 import { normalizeProfile } from './normalizeProfile.js';
-import { applySafeguards, profileFacts } from './safeguards.js';
+import { applyRefinement, applySafeguards, profileFacts } from './safeguards.js';
 
 export type Generator = 'ai' | 'demo';
 
@@ -31,16 +40,54 @@ export interface TailorResult {
   aiModel: string;
 }
 
-export async function tailorCv(config: Config, profile: Profile, job: Job): Promise<TailorResult> {
+export async function tailorCv(config: Config, profile: Profile, job: Job, layout?: Layout): Promise<TailorResult> {
   if (!aiConfigured(config)) {
-    return { ...demoTailor(profile, job), generatedBy: 'demo', aiModel: '' };
+    return { ...demoTailor(profile, job, layout), generatedBy: 'demo', aiModel: '' };
   }
-  const proposal = await chatJson(config, {
+  const { data, model } = await chatJson(config, {
     system: TAILOR_SYSTEM_PROMPT,
     user: tailorUserPrompt(profile, job),
     schema: aiTailorSchema,
   });
-  return { ...applySafeguards(profile, proposal), generatedBy: 'ai', aiModel: config.ai.model };
+  return {
+    ...applySafeguards(profile, data, { layout, instructions: job.instructions }),
+    generatedBy: 'ai',
+    aiModel: model,
+  };
+}
+
+export interface RefineResult extends TailorResult {
+  /** The model's short note to the user about what it did or declined. */
+  reply: string;
+  /** Skills added on the user's say-so that their master CV does not list yet. */
+  newSkills: string[];
+}
+
+/** Revise an existing CV according to a free-text instruction from the user. */
+export async function refineCv(
+  config: Config,
+  profile: Profile,
+  job: Job,
+  current: CvContent,
+  instruction: string,
+): Promise<RefineResult> {
+  if (!aiConfigured(config)) {
+    throw new HttpError(503, 'Instructions need an AI provider. Add an AI API key on the server to use this.', 'ai_not_configured');
+  }
+  // The model sees ids and wording, not the layout bookkeeping.
+  const { layout, ...cv } = current;
+  const { data, model } = await chatJson(config, {
+    system: REFINE_SYSTEM_PROMPT,
+    user: refineUserPrompt(profile, job, { ...cv, sectionOrder: layout.sections.map((s) => s.key) }, instruction),
+    schema: aiRefineSchema,
+  });
+  const refined = applyRefinement(profile, current, instruction, data);
+  return {
+    ...refined,
+    reply: data.reply || 'Done.',
+    generatedBy: 'ai',
+    aiModel: model,
+  };
 }
 
 export interface SummaryResult {
@@ -62,14 +109,14 @@ export async function regenerateSummary(
       warnings: ['Demo mode cannot rewrite text. The summary was reset to the one in your master CV. Add an AI API key on the server to generate tailored summaries.'],
     };
   }
-  const { summary } = await chatJson(config, {
+  const { data } = await chatJson(config, {
     system: SUMMARY_SYSTEM_PROMPT,
     user: summaryUserPrompt(profile, job, currentSummary),
     schema: aiSummarySchema,
   });
-  const unverified = profileFacts(profile).unverifiedNumbers(summary);
+  const unverified = profileFacts(profile).unverifiedNumbers(data.summary);
   return {
-    summary,
+    summary: data.summary,
     generatedBy: 'ai',
     warnings: unverified.length
       ? [`The new summary mentions a figure (${unverified.join(', ')}) that is not in your master CV. Check it before sending.`]
@@ -95,10 +142,36 @@ export async function extractProfile(config: Config, cvText: string): Promise<Ex
       ],
     };
   }
-  const raw = await chatJson(config, {
+  const { data } = await chatJson(config, {
     system: EXTRACT_SYSTEM_PROMPT,
     user: extractUserPrompt(cvText),
     schema: z.record(z.string(), z.unknown()),
   });
-  return { profile: normalizeProfile(raw), method: 'ai', warnings: [] };
+  return { profile: normalizeProfile(data), method: 'ai', warnings: [] };
+}
+
+export interface LayoutResult {
+  layout: Layout;
+  /** How many of the document's headings were recognised. */
+  found: number;
+  method: 'ai' | 'basic';
+}
+
+/** Work out the section order and heading names used by a sample CV or template. */
+export async function extractLayout(config: Config, documentText: string): Promise<LayoutResult> {
+  const basic = detectLayout(documentText);
+  if (!aiConfigured(config)) return { ...basic, method: 'basic' };
+  try {
+    const { data } = await chatJson(config, {
+      system: LAYOUT_SYSTEM_PROMPT,
+      user: layoutUserPrompt(documentText.slice(0, 20_000)),
+      schema: aiLayoutSchema,
+    });
+    const layout = parseLayout(data);
+    const found = data.sections.filter((s, i, all) => layout.sections.some((l) => l.key === s.key) && all.findIndex((o) => o.key === s.key) === i).length;
+    // The rule-based reader is a safety net when the model finds less than it does.
+    return found >= basic.found ? { layout, found, method: 'ai' } : { ...basic, method: 'basic' };
+  } catch {
+    return { ...basic, method: 'basic' };
+  }
 }

@@ -109,9 +109,11 @@ describe('tailoring through an OpenAI-compatible provider', () => {
     [429, 'ai_rate_limited'],
     [500, 'ai_provider_error'],
   ])('maps provider HTTP %i to %s', async (status, code) => {
-    ai = await mockAi([{ status }]);
+    ai = await mockAi([{ status }, { status }]);
     const err = await failure(() => tailorCv(configFor(ai!), profile, job));
     expect(err.code).toBe(code);
+    // Overload and rate-limit errors get one more try; a bad key or model name does not.
+    expect(ai.requests).toHaveLength(status === 429 || status === 500 ? 2 : 1);
     expect(err.message).not.toContain('sk-test-key');
   });
 
