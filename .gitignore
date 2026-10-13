@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# secrets — never commit real environment files
+.env
+.env.*
+!.env.example
+
+# logs, caches, editor and OS files
+*.log
+.cache/
+coverage/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# generated or uploaded documents
+tmp/
+uploads/
+*.pdf
+*.docx

@@ -1,0 +1,28 @@
+# Render Blueprint: one web service that serves both the API and the built frontend.
+# Secrets are marked "sync: false": Render asks for them when the blueprint is created
+# and they are never stored in this repository.
+services:
+  - type: web
+    name: cv-tailor-ai
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_BASE_URL
+        value: https://api.openai.com/v1
+      - key: AI_MODEL
+        value: gpt-4o-mini

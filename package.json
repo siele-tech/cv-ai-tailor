@@ -1,0 +1,16 @@
+{
+  "name": "cv-tailor-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mobile-first app that tailors a master CV to a job description and exports an ATS-friendly PDF.",
+  "workspaces": ["server", "client"],
+  "engines": { "node": ">=20.12" },
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "build": "npm run build -w client && npm run build -w server",
+    "start": "node server/dist/index.js",
+    "test": "npm test -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client"
+  }
+}
