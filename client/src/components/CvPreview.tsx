@@ -33,13 +33,13 @@ function sectionBody(key: SectionKey, content: CvContent): ReactNode {
         <>
           {skills.technical.length > 0 && (
             <p>
-              <span className="font-semibold">Technical: </span>
+              <span className="font-semibold">Key skills: </span>
               {skills.technical.join(', ')}
             </p>
           )}
           {skills.soft.length > 0 && (
             <p className="mt-1">
-              <span className="font-semibold">Soft skills: </span>
+              <span className="font-semibold">Personal skills: </span>
               {skills.soft.join(', ')}
             </p>
           )}
@@ -74,7 +74,7 @@ function sectionBody(key: SectionKey, content: CvContent): ReactNode {
             <div key={project.id}>
               <TitleRow title={project.name} when="" />
               {project.description && <p>{project.description}</p>}
-              {project.technologies.length > 0 && <p className="text-xs text-slate-600">Technologies: {project.technologies.join(', ')}</p>}
+              {project.technologies.length > 0 && <p className="text-xs text-slate-600">Tools and skills: {project.technologies.join(', ')}</p>}
               {project.link && <p className="text-xs break-words text-slate-600">{project.link}</p>}
             </div>
           ))}

@@ -1,6 +1,6 @@
 # CV Tailor AI
 
-A mobile-first web app that turns your master CV plus a job description into a tailored, ATS-friendly CV you can preview, edit and download as a PDF from your phone.
+A mobile-first web app that turns your master CV plus a job description into a tailored, ATS-friendly CV for any kind of job you can preview, edit and download as a PDF from your phone.
 
 **Workflow:** upload your CV (PDF or DOCX) or type it in → review and save your master CV → paste a job description → **Tailor My CV** → preview, edit, tell the AI what to change, check the job-match analysis → download the PDF → save the version to your history.
 

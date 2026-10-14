@@ -9,7 +9,7 @@ const FORM_KEY = 'cvt_job_form';
 const MIN_DESCRIPTION = 40;
 const MAX_DESCRIPTION = 20_000;
 
-const blankJob = (): Job => ({ title: '', company: '', description: '', url: '', emphasis: 'General IT', instructions: '' });
+const blankJob = (): Job => ({ title: '', company: '', description: '', url: '', emphasis: 'General', instructions: '' });
 
 function readForm(): Job {
   try {
@@ -117,22 +117,28 @@ export function TailorPage() {
       )}
 
       <Card className="space-y-4">
-        <Field label="Job title" value={job.title} onChange={(title) => set({ title })} error={errors.title} placeholder="e.g. Backend Engineer" maxLength={160} />
-        <Field label="Company" value={job.company} onChange={(company) => set({ company })} placeholder="e.g. Acme Bank" maxLength={160} />
+        <Field label="Job title" value={job.title} onChange={(title) => set({ title })} error={errors.title} placeholder="e.g. Accountant, Nurse, Sales Executive" maxLength={160} />
+        <Field label="Company" value={job.company} onChange={(company) => set({ company })} placeholder="e.g. City Hospital" maxLength={160} />
         <div>
           <label htmlFor={emphasisId} className="mb-1.5 block text-sm font-medium text-slate-700">
-            CV emphasis
+            Industry or field
           </label>
-          <select
+          <input
             id={emphasisId}
+            list={`${emphasisId}-options`}
             value={job.emphasis}
+            maxLength={80}
             onChange={(e) => set({ emphasis: e.target.value as Emphasis })}
-            className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-          >
+            onFocus={(e) => e.target.select()}
+            placeholder="e.g. Healthcare & Nursing"
+            className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+          />
+          <datalist id={`${emphasisId}-options`}>
             {EMPHASES.map((emphasis) => (
-              <option key={emphasis}>{emphasis}</option>
+              <option key={emphasis} value={emphasis} />
             ))}
-          </select>
+          </datalist>
+          <p className="mt-1 text-xs text-slate-500">Pick a suggestion or type your own.</p>
         </div>
         <TextArea
           label="Job description"
@@ -148,7 +154,7 @@ export function TailorPage() {
           rows={3}
           value={job.instructions}
           onChange={(instructions) => set({ instructions })}
-          placeholder="e.g. Keep it to one page. Emphasise my API and payments work. I also used Kafka at my current job for event streaming."
+          placeholder="e.g. Keep it to one page. Emphasise my customer service. I also trained new staff at my current job."
           hint="Style, emphasis, or true facts about you that are not in your master CV yet."
           maxLength={2000}
         />

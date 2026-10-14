@@ -79,16 +79,36 @@ export interface Profile {
   languages: Language[];
 }
 
+/** Suggestions for the industry or field; any text is accepted. */
 export const EMPHASES = [
-  'General IT',
+  'General',
+  'Accounting & Finance',
+  'Administration & Office',
+  'Agriculture',
+  'Banking & Fintech',
+  'Construction & Trades',
+  'Creative, Media & Design',
+  'Customer Service',
+  'Data & Analytics',
+  'Education & Teaching',
+  'Engineering',
+  'Government & Public Sector',
+  'Healthcare & Nursing',
+  'Hospitality & Tourism',
+  'Human Resources',
+  'Information Technology',
+  'Legal',
+  'Logistics & Supply Chain',
+  'Manufacturing',
+  'Marketing & Communications',
+  'NGO & Development',
+  'Retail',
+  'Sales & Business Development',
+  'Science & Research',
+  'Security',
   'Software Development',
-  'Full-Stack Development',
-  'Data Analysis',
-  'Fintech',
-  'AI/ML',
-  'DevOps',
-] as const;
-export type Emphasis = (typeof EMPHASES)[number];
+];
+export type Emphasis = string;
 
 export interface Job {
   title: string;

@@ -16,6 +16,22 @@ import { containsTerm, profileFacts, verbatimBullets } from './safeguards.js';
 
 /** Common requirement terms, used to spot things a job asks for that the profile lacks. */
 const KNOWN_TERMS = [
+  // general and office
+  'Microsoft Office', 'Microsoft Excel', 'Microsoft Word', 'PowerPoint', 'Google Workspace', 'Data Entry', 'Record Keeping',
+  'Customer Service', 'Communication', 'Teamwork', 'Leadership', 'Time Management', 'Problem Solving', 'Report Writing',
+  'Project Management', 'Budgeting', 'Scheduling', 'Negotiation', 'Presentation', 'Training', 'Supervision', 'Mentoring',
+  // finance, sales and retail
+  'Accounting', 'Bookkeeping', 'QuickBooks', 'Sage', 'Payroll', 'Auditing', 'Taxation', 'IFRS', 'Financial Reporting',
+  'Sales', 'Business Development', 'CRM', 'Salesforce', 'Cash Handling', 'Point of Sale', 'Inventory Management', 'Merchandising',
+  'Marketing', 'Digital Marketing', 'Social Media', 'SEO', 'Content Writing', 'Copywriting', 'Public Relations', 'Event Planning',
+  // health, education, hospitality and trades
+  'Patient Care', 'Nursing', 'First Aid', 'CPR', 'Infection Control', 'Medication Administration', 'Pharmacy',
+  'Teaching', 'Lesson Planning', 'Curriculum Development', 'Classroom Management', 'Tutoring',
+  'Food Safety', 'Food Hygiene', 'Housekeeping', 'Front Desk', 'Reservations', 'Barista',
+  'Health and Safety', 'Driving Licence', 'Forklift', 'Warehouse', 'Procurement', 'Supply Chain', 'Logistics',
+  'Recruitment', 'Onboarding', 'Employee Relations', 'Monitoring and Evaluation', 'Grant Writing', 'Fundraising',
+  'Research', 'Laboratory', 'Quality Assurance', 'Quality Control', 'AutoCAD', 'Graphic Design', 'Adobe Photoshop', 'Video Editing',
+  // technology
   'JavaScript', 'TypeScript', 'Python', 'Java', 'C#', 'C++', 'Golang', 'Rust', 'PHP', 'Ruby', 'Kotlin', 'Swift', 'Scala',
   'React', 'Angular', 'Vue', 'Next.js', 'Svelte', 'Redux', 'Tailwind CSS', 'HTML', 'CSS', 'Sass',
   'Node.js', 'Express', 'NestJS', 'Django', 'Flask', 'FastAPI', 'Spring Boot', '.NET', 'Laravel', 'Ruby on Rails',

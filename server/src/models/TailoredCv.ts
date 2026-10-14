@@ -1,6 +1,5 @@
 import { Schema, model, type Types } from 'mongoose';
 import {
-  EMPHASES,
   GENERATORS,
   analysisSchema,
   cvContentSchema,
@@ -27,7 +26,7 @@ const jobSchema = new Schema<Job>(
     company: { type: String, default: '', trim: true, maxlength: 160 },
     description: { type: String, required: true, maxlength: 20_000 },
     url: { type: String, default: '', trim: true, maxlength: 600 },
-    emphasis: { type: String, enum: EMPHASES, default: 'General IT' },
+    emphasis: { type: String, default: 'General', trim: true, maxlength: 80 },
     instructions: { type: String, default: '', maxlength: 2000 },
   },
   { _id: false },

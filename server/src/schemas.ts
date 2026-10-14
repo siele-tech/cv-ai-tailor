@@ -109,14 +109,34 @@ export type Project = z.infer<typeof projectSchema>;
 
 // ---------- job + tailored CV ----------
 
+/** Suggested fields for "emphasis". Any other text is accepted, so every industry works. */
 export const EMPHASES = [
-  'General IT',
+  'General',
+  'Accounting & Finance',
+  'Administration & Office',
+  'Agriculture',
+  'Banking & Fintech',
+  'Construction & Trades',
+  'Creative, Media & Design',
+  'Customer Service',
+  'Data & Analytics',
+  'Education & Teaching',
+  'Engineering',
+  'Government & Public Sector',
+  'Healthcare & Nursing',
+  'Hospitality & Tourism',
+  'Human Resources',
+  'Information Technology',
+  'Legal',
+  'Logistics & Supply Chain',
+  'Manufacturing',
+  'Marketing & Communications',
+  'NGO & Development',
+  'Retail',
+  'Sales & Business Development',
+  'Science & Research',
+  'Security',
   'Software Development',
-  'Full-Stack Development',
-  'Data Analysis',
-  'Fintech',
-  'AI/ML',
-  'DevOps',
 ] as const;
 
 // ---------- CV structure (section order and heading names) ----------
@@ -187,7 +207,8 @@ export const jobSchema = z.object({
     .min(40, 'Paste the job description (at least 40 characters)')
     .max(20_000, 'Job description is too long (20,000 characters max)'),
   url: text(600),
-  emphasis: z.enum(EMPHASES).default('General IT'),
+  /** The industry or field the CV should lean towards. Free text; EMPHASES lists suggestions. */
+  emphasis: z.string().trim().max(80).default('General').transform((v) => v || 'General'),
   /** The candidate's own guidance for this CV ("keep it to one page", "stress my API work"). */
   instructions: text(2000),
 });

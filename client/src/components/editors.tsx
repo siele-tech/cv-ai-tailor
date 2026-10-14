@@ -104,8 +104,8 @@ export function ContactFields({ value, onChange }: { value: Contact; onChange(va
 export function SkillsFields({ value, onChange }: { value: Skills; onChange(value: Skills): void }) {
   return (
     <>
-      <ListText mode="commas" label="Technical skills" rows={4} value={value.technical} onChange={(technical) => onChange({ ...value, technical })} placeholder="TypeScript, React, Node.js, SQL" />
-      <ListText mode="commas" label="Soft skills" value={value.soft} onChange={(soft) => onChange({ ...value, soft })} placeholder="Communication, Teamwork" />
+      <ListText mode="commas" label="Key skills (job-specific)" rows={4} value={value.technical} onChange={(technical) => onChange({ ...value, technical })} placeholder="e.g. Bookkeeping, Patient care, Microsoft Excel, Python" />
+      <ListText mode="commas" label="Personal skills" value={value.soft} onChange={(soft) => onChange({ ...value, soft })} placeholder="Communication, Teamwork" />
     </>
   );
 }
@@ -231,7 +231,7 @@ export function ProjectList({ items, onChange }: { items: Project[]; onChange(it
         <>
           <Field label="Project name" value={item.name} onChange={(name) => update({ name })} maxLength={200} />
           <TextArea label="Description" rows={3} value={item.description} onChange={(description) => update({ description })} maxLength={1500} />
-          <ListText mode="commas" label="Technologies used" rows={2} value={item.technologies} onChange={(technologies) => update({ technologies })} />
+          <ListText mode="commas" label="Tools, skills or technologies used" rows={2} value={item.technologies} onChange={(technologies) => update({ technologies })} />
           <Field label="Link (optional)" inputMode="url" value={item.link} onChange={(link) => update({ link })} maxLength={300} />
         </>
       )}

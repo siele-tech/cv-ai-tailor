@@ -59,7 +59,7 @@ export function AiChat({ aiConfigured, messages, value, onChange, onSend, busy, 
               maxLength={20000}
               disabled={busy}
               onChange={(e) => onChange(e.target.value)}
-              placeholder="e.g. I used Docker at my current job to package our services. Add it."
+              placeholder="e.g. I also trained new staff at my current job. Add it."
               className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none disabled:bg-slate-50"
             />
             {busy ? (

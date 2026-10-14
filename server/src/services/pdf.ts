@@ -170,8 +170,8 @@ export function renderCvPdf(content: CvContent): Promise<Buffer> {
 
     render.skills = (title) => {
     const skillRows: [string, string[]][] = [
-      ['Technical', content.skills.technical],
-      ['Soft skills', content.skills.soft],
+      ['Key skills', content.skills.technical],
+      ['Personal skills', content.skills.soft],
     ];
     const shownSkills = skillRows.filter(([, items]) => items.length > 0);
     if (shownSkills.length) {
@@ -216,7 +216,7 @@ export function renderCvPdf(content: CvContent): Promise<Buffer> {
         titleRow(project.name, '');
         paragraph(project.description);
         if (project.technologies.length) {
-          paragraph(`Technologies: ${project.technologies.join(', ')}`, { size: SIZE.small, color: MUTED });
+          paragraph(`Tools and skills: ${project.technologies.join(', ')}`, { size: SIZE.small, color: MUTED });
         }
         paragraph(project.link, { size: SIZE.small, color: MUTED });
       });
