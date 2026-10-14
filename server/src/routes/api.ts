@@ -1,18 +1,17 @@
-import { Router, type Request } from 'express';
+import { Router, type Request, type RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import mongoose from 'mongoose';
 import multer from 'multer';
 import { aiConfigured, type Config } from '../config.js';
 import { dbConnected, dbState } from '../db.js';
 import { HttpError, badRequest, notFound } from '../errors.js';
-import { issueToken, ownerIdOf, passwordMatches, requireAuth } from '../middleware/auth.js';
+import { ownerIdOf, requireAuth } from '../middleware/auth.js';
 import { requireDb } from '../middleware/error.js';
 import { MasterProfile } from '../models/Profile.js';
 import { TailoredCv } from '../models/TailoredCv.js';
 import { User } from '../models/User.js';
 import {
   jobSchema,
-  loginSchema,
   parseLayout,
   pdfRequestSchema,
   profileSchema,
@@ -26,10 +25,12 @@ import {
 import { sampleProfile } from '../services/demo.js';
 import { detectKind, extractText } from '../services/extractText.js';
 import { profileIsUsable } from '../services/normalizeProfile.js';
+import { aiQuota, dailyLimitFor, usageToday } from '../services/usage.js';
+import { accountRouter, deleteUserData, publicAccountRouter } from './account.js';
+import { documentRoutes, fileRoutes, publicShareRoutes } from './documents.js';
 import { cvFilename, renderCvPdf } from '../services/pdf.js';
 import { extractLayout, extractProfile, refineCv, regenerateSummary, restyleCv, tailorCv } from '../services/tailor.js';
 
-const OWNER_USERNAME = 'owner';
 
 function versionId(req: Request): string {
   const id = String(req.params.id ?? '');
@@ -92,29 +93,25 @@ export function apiRouter(config: Config): Router {
     res.status(connected ? 200 : 503).json({ status: connected ? 'ok' : 'degraded', db: connected ? 'connected' : 'disconnected' });
   });
 
-  router.post('/auth/login', loginLimiter, requireDb, async (req, res) => {
-    const { password } = loginSchema.parse(req.body);
-    if (!passwordMatches(password, config.appPassword)) {
-      throw new HttpError(401, 'Incorrect password.', 'invalid_credentials');
-    }
-    const owner = await User.findOneAndUpdate(
-      { username: OWNER_USERNAME },
-      { $set: { lastLoginAt: new Date() } },
-      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
-    );
-    res.json({ token: issueToken(config, owner.id as string) });
-  });
+  router.use(publicAccountRouter(config, loginLimiter));
+  router.use(publicShareRoutes(config));
 
   // ---------- everything below requires a valid session ----------
 
   router.use(requireAuth(config));
+  // Every AI-backed route: a per-IP hourly ceiling and a per-person daily allowance.
+  const quota = aiQuota(config);
+  const aiGuard: RequestHandler = (req, res, next) => aiLimiter(req, res, (err?: unknown) => (err ? next(err) : quota(req, res, next)));
 
-  router.get('/status', (_req, res) => {
+  router.get('/status', async (req, res) => {
+    const limit = dailyLimitFor(config, req.role);
     res.json({
       aiConfigured: aiConfigured(config),
       aiModel: aiConfigured(config) ? config.ai.model : '',
       dbPersistent: dbState.persistent,
       maxUploadMb: Math.round(config.maxUploadBytes / 1024 / 1024),
+      role: req.role ?? 'member',
+      aiUsage: { used: dbConnected() ? await usageToday(ownerIdOf(req)) : 0, limit },
     });
   });
 
@@ -135,11 +132,13 @@ export function apiRouter(config: Config): Router {
       .send(pdf);
   });
 
+  router.use(fileRoutes());
+
   router.get('/profile/sample', (_req, res) => {
     res.json({ profile: sampleProfile() });
   });
 
-  router.post('/profile/extract', aiLimiter, upload.single('file'), async (req, res) => {
+  router.post('/profile/extract', aiGuard, upload.single('file'), async (req, res) => {
     if (!req.file) throw badRequest('Choose a PDF or DOCX file to upload.');
     const kind = detectKind(req.file.buffer, req.file.originalname);
     const text = await extractText(req.file.buffer, kind);
@@ -147,7 +146,7 @@ export function apiRouter(config: Config): Router {
     res.json(await extractProfile(config, text));
   });
 
-  router.post('/layout/extract', aiLimiter, upload.single('file'), async (req, res) => {
+  router.post('/layout/extract', aiGuard, upload.single('file'), async (req, res) => {
     if (!req.file) throw badRequest('Choose a PDF or DOCX file to upload.');
     const kind = detectKind(req.file.buffer, req.file.originalname);
     const text = await extractText(req.file.buffer, kind);
@@ -156,6 +155,8 @@ export function apiRouter(config: Config): Router {
   });
 
   router.use(requireDb);
+  router.use(accountRouter(config));
+  router.use(documentRoutes(config, aiGuard));
 
   // ---------- CV structure ----------
 
@@ -193,20 +194,20 @@ export function apiRouter(config: Config): Router {
 
   // ---------- tailoring (never writes to the database) ----------
 
-  router.post('/tailor', aiLimiter, async (req, res) => {
+  router.post('/tailor', aiGuard, async (req, res) => {
     const job = jobSchema.parse(req.body);
     const ownerId = ownerIdOf(req);
     const [profile, layout] = await Promise.all([loadProfile(ownerId), loadLayout(ownerId)]);
     res.json({ job, ...(await tailorCv(config, profile, job, layout)) });
   });
 
-  router.post('/tailor/refine', aiLimiter, async (req, res) => {
+  router.post('/tailor/refine', aiGuard, async (req, res) => {
     const { job, content, instruction } = refineRequestSchema.parse(req.body);
     const profile = await loadProfile(ownerIdOf(req));
     res.json({ job, ...(await refineCv(config, profile, job, content, instruction)) });
   });
 
-  router.post('/tailor/restyle', aiLimiter, uploadWithPayload.single('file'), async (req, res) => {
+  router.post('/tailor/restyle', aiGuard, uploadWithPayload.single('file'), async (req, res) => {
     if (!req.file) throw badRequest('Attach a sample CV (PDF or DOCX).');
     let payload: unknown;
     try {
@@ -222,7 +223,7 @@ export function apiRouter(config: Config): Router {
     res.json({ job, ...(await restyleCv(config, profile, job, content, analysis, sampleText)) });
   });
 
-  router.post('/tailor/summary', aiLimiter, async (req, res) => {
+  router.post('/tailor/summary', aiGuard, async (req, res) => {
     const { job, currentSummary } = regenerateSummarySchema.parse(req.body);
     const profile = await loadProfile(ownerIdOf(req));
     res.json(await regenerateSummary(config, profile, job, currentSummary));
@@ -232,10 +233,14 @@ export function apiRouter(config: Config): Router {
 
   router.get('/dashboard', async (req, res) => {
     const ownerId = ownerIdOf(req);
-    const [profileDoc, totalVersions, recent] = await Promise.all([
+    const [profileDoc, totalVersions, recent, pipeline] = await Promise.all([
       MasterProfile.findOne({ ownerId }).lean(),
       TailoredCv.countDocuments({ ownerId }),
-      TailoredCv.find({ ownerId }).sort({ createdAt: -1 }).limit(3).select('job.title job.company job.emphasis generatedBy analysis.score createdAt').lean(),
+      TailoredCv.find({ ownerId }).sort({ createdAt: -1 }).limit(3).select('job.title job.company job.emphasis generatedBy analysis.score application createdAt').lean(),
+      TailoredCv.aggregate<{ _id: string | null; n: number }>([
+        { $match: { ownerId: new mongoose.Types.ObjectId(ownerId) } },
+        { $group: { _id: '$application.status', n: { $sum: 1 } } },
+      ]),
     ]);
     const profile = profileDoc ? profileSchema.parse(profileDoc.data) : null;
     res.json({
@@ -254,6 +259,7 @@ export function apiRouter(config: Config): Router {
           }
         : { exists: false, usable: false },
       totalVersions,
+      pipeline: Object.fromEntries(pipeline.map((p) => [p._id ?? 'not_applied', p.n])),
       recent: recent.map(summarise),
     });
   });
@@ -262,7 +268,7 @@ export function apiRouter(config: Config): Router {
     const versions = await TailoredCv.find({ ownerId: ownerIdOf(req) })
       .sort({ createdAt: -1 })
       .limit(200)
-      .select('job.title job.company job.emphasis generatedBy analysis.score createdAt updatedAt')
+      .select('job.title job.company job.emphasis generatedBy analysis.score application createdAt updatedAt')
       .lean();
     res.json({ versions: versions.map(summarise) });
   });
@@ -298,13 +304,7 @@ export function apiRouter(config: Config): Router {
 
   /** Erase everything stored for the owner: master profile and every saved CV version. */
   router.delete('/data', async (req, res) => {
-    const ownerId = ownerIdOf(req);
-    const [versions] = await Promise.all([
-      TailoredCv.deleteMany({ ownerId }),
-      MasterProfile.deleteOne({ ownerId }),
-      User.updateOne({ _id: ownerId }, { $unset: { layout: 1 } }),
-    ]);
-    res.json({ deletedVersions: versions.deletedCount });
+    res.json({ deletedVersions: await deleteUserData(ownerIdOf(req), false) });
   });
 
   return router;
@@ -315,6 +315,7 @@ type LeanVersion = {
   job: { title: string; company?: string; emphasis?: string; description?: string; url?: string };
   generatedBy: string;
   analysis?: { score?: number };
+  application?: { status?: string; appliedAt?: string; notes?: string };
   createdAt: Date;
   updatedAt?: Date;
 };
@@ -326,13 +327,17 @@ function summarise(doc: LeanVersion) {
     company: doc.job.company ?? '',
     emphasis: doc.job.emphasis ?? '',
     score: typeof doc.analysis?.score === 'number' ? Math.round(doc.analysis.score) : undefined,
+    status: doc.application?.status ?? 'not_applied',
+    appliedAt: doc.application?.appliedAt ?? '',
     generatedBy: doc.generatedBy,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt ?? doc.createdAt,
   };
 }
 
-function full(doc: LeanVersion & { content: unknown; analysis: unknown; aiModel?: string }) {
+function full(
+  doc: LeanVersion & { content: unknown; analysis: unknown; aiModel?: string; coverLetter?: string; interviewPrep?: unknown; share?: { token?: string; enabled?: boolean } },
+) {
   return {
     id: String(doc._id),
     job: doc.job,
@@ -340,6 +345,10 @@ function full(doc: LeanVersion & { content: unknown; analysis: unknown; aiModel?
     analysis: doc.analysis,
     generatedBy: doc.generatedBy,
     aiModel: doc.aiModel ?? '',
+    coverLetter: doc.coverLetter ?? '',
+    interviewPrep: doc.interviewPrep ?? null,
+    application: { status: doc.application?.status ?? 'not_applied', appliedAt: doc.application?.appliedAt ?? '', notes: doc.application?.notes ?? '' },
+    share: doc.share?.token ? { token: doc.share.token, enabled: Boolean(doc.share.enabled) } : null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt ?? doc.createdAt,
   };

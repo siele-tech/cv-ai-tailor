@@ -7,7 +7,7 @@ const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/', label: 'Home', icon: 'home', end: true },
   { to: '/profile', label: 'Master CV', icon: 'user' },
   { to: '/tailor', label: 'Tailor', icon: 'sparkles' },
-  { to: '/history', label: 'History', icon: 'clock' },
+  { to: '/history', label: 'Applications', icon: 'clock' },
 ];
 
 export function Layout() {

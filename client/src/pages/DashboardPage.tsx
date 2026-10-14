@@ -31,7 +31,7 @@ export function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setError('');
+    setError('');[[]]
     api
       .dashboard()
       .then((d) => !cancelled && setData(d))
@@ -114,6 +114,24 @@ export function DashboardPage() {
           <p className="text-2xl leading-tight font-extrabold text-slate-900 tabular-nums">{data.totalVersions}</p>
         </Card>
       </div>
+
+      {/* ---------- job search at a glance ---------- */}
+      {data.totalVersions > 0 && (
+        <Link to="/history" className="grid grid-cols-3 gap-2">
+          {(
+            [
+              ['Applied', (data.pipeline.applied ?? 0) + (data.pipeline.interview ?? 0) + (data.pipeline.offer ?? 0) + (data.pipeline.rejected ?? 0), 'from-sky-500 to-brand-500'],
+              ['Interviews', (data.pipeline.interview ?? 0) + (data.pipeline.offer ?? 0), 'from-violet-500 to-fuchsia-500'],
+              ['Offers', data.pipeline.offer ?? 0, 'from-emerald-500 to-teal-500'],
+            ] as const
+          ).map(([label, n, gradient]) => (
+            <div key={label} className="rounded-2xl border border-white/70 bg-white/90 p-3 text-center shadow-sm">
+              <p className={`bg-gradient-to-br ${gradient} bg-clip-text text-2xl font-extrabold text-transparent tabular-nums`}>{n}</p>
+              <p className="text-xs font-semibold text-slate-500">{label}</p>
+            </div>
+          ))}
+        </Link>
+      )}
 
       {/* ---------- recent ---------- */}
       <section>

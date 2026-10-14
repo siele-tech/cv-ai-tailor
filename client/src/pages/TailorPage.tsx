@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, errorMessage } from '../api';
 import { Button, Card, ConfirmDialog, EmptyState, Field, LoadingBlock, Notice, PageTitle, TextArea } from '../components/ui';
 import { WorkingCard } from '../components/WorkingCard';
+import { askToNotify, notifyIfHidden } from '../notify';
 
 const TAILOR_STEPS = [
   'Reading the job description',
@@ -12,25 +13,6 @@ const TAILOR_STEPS = [
   'Scoring how well you match',
 ];
 
-/** Let the user know the CV is ready even if they switched to another app while waiting. */
-function announceReady() {
-  try {
-    navigator.vibrate?.([80, 60, 80]);
-  } catch {
-    // vibration is optional
-  }
-  if (document.hidden) {
-    const original = document.title;
-    document.title = 'Your CV is ready - CV Tailor AI';
-    const restore = () => {
-      if (!document.hidden) {
-        document.title = original;
-        document.removeEventListener('visibilitychange', restore);
-      }
-    };
-    document.addEventListener('visibilitychange', restore);
-  }
-}
 import { useDraft, useSession, useToast } from '../state';
 import { EMPHASES, type Emphasis, type Job } from '../types';
 
@@ -96,13 +78,14 @@ export function TailorPage() {
   }
 
   async function generate() {
+    askToNotify();
     setConfirmReplace(false);
     setBusy(true);
     setFailure('');
     try {
       const result = await api.tailor({ ...job, title: job.title.trim(), company: job.company.trim(), description: job.description.trim(), url: job.url.trim(), instructions: job.instructions.trim() });
       setDraft({ ...result, dirty: false, fresh: true });
-      announceReady();
+      notifyIfHidden('Your tailored CV is ready', `${result.job.title}${result.job.company ? ` at ${result.job.company}` : ''}`);
       sessionStorage.removeItem(FORM_KEY);
       if (result.generatedBy !== 'ai') toast('info', 'Demo CV ready (no AI was used).');
       navigate('/cv/new');

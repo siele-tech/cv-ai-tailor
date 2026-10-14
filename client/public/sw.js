@@ -1,6 +1,6 @@
 // Minimal service worker: makes the app installable and lets the shell open offline.
 // API responses (personal data) are never cached.
-const CACHE = 'cv-tailor-shell-v1';
+const CACHE = 'cv-tailor-shell-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['/', '/manifest.webmanifest', '/icon-192.png'])));
@@ -48,4 +48,15 @@ self.addEventListener('fetch', (event) => {
       ),
     );
   }
+});
+
+// Tapping a "your CV is ready" notification brings the app back to the front.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const open = clients.find((c) => 'focus' in c);
+      return open ? open.focus() : self.clients.openWindow('/');
+    }),
+  );
 });

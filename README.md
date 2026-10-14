@@ -35,9 +35,25 @@ The app tailors what is true. It never adds employers, dates, qualifications, fi
 | Database | MongoDB (Atlas in production) through Mongoose. |
 | AI | Any OpenAI-compatible `chat/completions` API, configured by environment variables. Replies are JSON validated with zod. |
 | Documents | `mammoth` (DOCX) and `unpdf` (PDF) for text extraction; `pdfkit` for PDF output with real, selectable text. |
-| Auth | Single-owner password login, signed session token (7 days), rate-limited. |
+| Auth | The owner signs in with `APP_PASSWORD`; friends join with invite codes and sign in with email and password (scrypt-hashed). Signed session tokens (7 days), rate-limited. |
+| Files | PDF (four designs) and Word (.docx) for CVs and cover letters, via `pdfkit` and `docx`. |
 
-Pages: Dashboard, Master CV, Tailor, CV result (Preview / Edit / Job match), History, Settings.
+Pages: Dashboard, Master CV, Tailor, CV result (Preview / Ask AI / Match / Edit / More), Applications, Settings, and a public page for shared CVs.
+
+## Features
+
+- **Tailoring** from a master CV to any job advert, any industry, with server-side fact checks.
+- **Job match** as a requirement checklist (met / partly / not shown) with a computed score, and "Raise your score" for adding real experience.
+- **Ask AI**: free-text instructions, pasting a different job advert, or attaching a sample CV to copy its structure and writing style.
+- **Cover letter** in a chosen tone, editable, as PDF or Word.
+- **Interview prep**: likely questions with suggested answers from your own experience, honest advice for gaps, and questions to ask.
+- **LinkedIn** headline, About section and skills from the master CV.
+- **Four PDF designs** (Professional, Modern, Classic, Compact), a live page count, and **Fit on one page**.
+- **Word (.docx) download** of the CV.
+- **Application tracker**: status (applied, interview, offer, rejected, withdrawn), date and notes per CV, with totals on the dashboard.
+- **Share by link**: a read-only page for a saved CV that anyone can open without an account; it can be switched off at any time. The job advert, match and notes are never shown.
+- **Accounts for friends**: invite codes, private data per person, a daily AI allowance per person, and owner tools to switch people off or delete them.
+- **Busy AI handling**: backup models on the server, two automatic retries in the app, and a notification or vibration when a long task finishes.
 
 **Demo mode.** With no `AI_API_KEY`, the app still works end to end, but no AI is involved: uploaded CVs are read by a basic rule-based parser, and "tailoring" only reorders your own wording by keyword overlap. Everything produced this way is labelled as demo output in the app. It is never presented as AI-generated.
 
@@ -94,6 +110,8 @@ All secrets live on the server. Nothing secret is compiled into the frontend. Se
 | `CORS_ORIGINS` | split deploys only | Comma-separated origins allowed to call the API from another domain. Empty means same-origin only. |
 | `SERVE_CLIENT` | no | `false` to run as an API only. |
 | `MAX_UPLOAD_MB` | no | Upload size limit. Default 5. |
+| `AI_DAILY_LIMIT` | no | AI requests each invited friend may make per day. Default 40; `0` means unlimited. |
+| `AI_DAILY_LIMIT_OWNER` | no | The same for the owner. Default 0 (unlimited). |
 | `VITE_API_BASE_URL` | split deploys only | Build-time URL of the API for the frontend. Unset means same origin. |
 
 ## Deploy: MongoDB Atlas + Render
@@ -224,7 +242,10 @@ The job-match score is an AI estimate (or a keyword-overlap estimate in demo mod
 
 ## Security and privacy
 
-- **Single-user app.** One owner, one password (`APP_PASSWORD`). There is no sign-up. Every route that reads or writes CV data, generates content or produces a PDF requires a valid session token. Only `/api/health` and the login endpoint are public; login is rate-limited (10 attempts per 15 minutes per IP).
+- **Accounts.** The owner signs in with `APP_PASSWORD` (leave the email empty, or tap "I am the app owner"). Nobody else can sign up without an invite code from the owner (Settings → Invite a friend). Codes have a use limit and can be switched off. Friends' passwords are stored as scrypt hashes, never in plain text.
+- **Private data.** Every master CV, CV version and structure belongs to one account, and every query is scoped to the signed-in person. Members cannot reach the admin tools. Switching a person off ends their access at once.
+- **Public routes** are only `/api/health`, sign-in, joining with an invite code (both rate-limited: 10 attempts per 15 minutes per IP) and opening a share link. A share link shows only the CV itself, uses an unguessable 24-character token, and stops working the moment it is switched off.
+- **AI allowance.** Each friend has a daily cap on AI requests (`AI_DAILY_LIMIT`), and every AI route also has an hourly per-IP ceiling, so nobody can run up your AI bill or use up a free quota.
 - **Secrets stay on the server.** The AI key, database URI and signing secret are read from environment variables and never sent to the browser. `.env` files are git-ignored.
 - **Uploads** are accepted only as PDF or DOCX (extension and file signature are both checked), limited in size (5 MB unless `MAX_UPLOAD_MB` says otherwise), processed in memory and discarded. They are never written to disk or stored, and there are no public file URLs.
 - **Input validation.** Every request body is validated with zod before use. Database queries are built from validated values and always scoped to the owner; ids are checked before querying.
@@ -240,11 +261,12 @@ The job-match score is an AI estimate (or a keyword-overlap estimate in demo mod
 npm test
 ```
 
-111 backend tests (Vitest) covering:
+145 backend tests (Vitest) covering:
 
 - PDF and DOCX text extraction; unsupported, disguised, corrupted, empty and oversized files.
 - The AI client against a local OpenAI-compatible mock server: valid replies, schema violations and the correction retry, provider errors (401, 404, 429, 500), empty replies, unreachable provider, timeouts, missing API key (demo mode).
 - Prompt-injection handling and the factual safeguards.
+- Accounts and invite codes (single-use codes, private data, switching people off, password changes, daily AI limits), PDF designs and page counts, Word files, cover letters, interview prep, LinkedIn, one-page mode, the application tracker and share links.
 - CV structures (reading a template, order, renamed and hidden sections in the PDF), AI instructions (stated facts accepted, unstated ones rejected, facts never altered), and failover between models.
 - PDF generation for short, long (multi-page) and nearly empty CVs, edited content, special characters, filename sanitising.
 - The HTTP API with a real (in-memory) MongoDB: authentication on every protected route, profile validation, tailoring, saving, loading, updating and deleting versions, version isolation, delete-all, CORS, production config checks, and behaviour when the database goes away.
@@ -256,7 +278,9 @@ The first run downloads a MongoDB binary for the in-memory test database.
 ## Limitations and manual steps
 
 - **Deployment is manual.** Creating the Atlas cluster, the AI key, the GitHub repository and the Render service requires your accounts (steps 1 to 6 above).
-- **Single user.** No accounts or roles. Anyone with the password has full access, so choose a strong one. The data model already carries an owner id, so multi-user accounts could be added later.
+- **No self-service password reset.** If a friend forgets their password, delete their account in Settings and send them a new invite (their CVs are lost), or let them keep using a signed-in device and change it in Settings. Email-based reset would need an email service.
+- **Share links show contact details** (name, email, phone) to anyone who has the link. Switch a link off when it is no longer needed.
+- **Notifications** when a task finishes in the background need the installed app (or Chrome) and your permission; otherwise the phone vibrates and the tab title changes.
 - **Scanned PDFs are not supported.** There is no OCR; image-only PDFs are rejected with an explanation.
 - **Extraction is never perfect.** Multi-column or heavily designed CVs can extract out of order. Always review the form before saving. The no-AI basic parser is much rougher than the AI one.
 - **The safeguards are conservative, not omniscient.** They match text, so they can remove a legitimate bullet (for example when the AI writes "10 engineers" and your CV says "ten"), and they cannot detect every subtle exaggeration in wording. Read the CV before sending it; the "Check before sending" list shows what was removed and why.

@@ -29,6 +29,7 @@ import {
 import { demoTailor } from './demo.js';
 import { detectLayout, parseCvHeuristically } from './heuristicParser.js';
 import { normalizeProfile } from './normalizeProfile.js';
+import { renderCvPdfWithInfo } from './pdf.js';
 import { applyRefinement, applySafeguards, profileFacts } from './safeguards.js';
 
 export type Generator = 'ai' | 'demo';
@@ -241,4 +242,37 @@ export async function extractLayout(config: Config, documentText: string): Promi
   } catch {
     return { ...basic, method: 'basic' };
   }
+}
+
+const ONE_PAGE_INSTRUCTION =
+  'Shorten this CV so it fits on a single A4 page. Keep the summary to at most three sentences. Keep only the three or four most relevant bullet points for the most relevant roles and one or two for the others, and tighten their wording. Keep the most relevant skills only (about twelve). Keep every role, all dates and all facts.';
+
+export interface OnePageResult extends RefineResult {
+  pages: number;
+}
+
+/**
+ * Make a CV fit on one page: first let the AI trim the least relevant detail, then, if it is
+ * still too long, switch to the compact design. Reports the page count it ends up with.
+ */
+export async function fitOnePage(config: Config, profile: Profile, job: Job, current: CvContent, analysis: Analysis): Promise<OnePageResult> {
+  const before = await renderCvPdfWithInfo(current);
+  if (before.pages <= 1) {
+    return { job, content: current, analysis, generatedBy: aiConfigured(config) ? 'ai' : 'demo', aiModel: '', reply: 'It already fits on one page.', newSkills: [], pages: 1 };
+  }
+
+  let result: RefineResult = { job, content: current, analysis, generatedBy: 'demo', aiModel: '', reply: '', newSkills: [] };
+  if (aiConfigured(config)) result = await refineCv(config, profile, job, current, ONE_PAGE_INSTRUCTION);
+
+  let content = result.content;
+  let pages = (await renderCvPdfWithInfo(content)).pages;
+  const steps: string[] = [];
+  if (result.reply) steps.push(result.reply);
+  if (pages > 1 && content.design !== 'compact') {
+    content = { ...content, design: 'compact' };
+    pages = (await renderCvPdfWithInfo(content)).pages;
+    steps.push('Switched to the Compact design to save space.');
+  }
+  steps.push(pages <= 1 ? 'It now fits on one page.' : `It is now ${pages} pages. To shorten it further, remove older roles, projects or sections in the Edit tab, or hide sections in Structure.`);
+  return { ...result, content, reply: steps.join(' '), pages };
 }

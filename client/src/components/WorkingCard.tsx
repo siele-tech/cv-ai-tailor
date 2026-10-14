@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { onAiRetry } from '../api';
 import { Icon, Spinner } from './ui';
 
 /**
@@ -8,6 +9,9 @@ import { Icon, Spinner } from './ui';
 export function WorkingCard({ title, steps, hint, stepSeconds = 6 }: { title: string; steps: string[]; hint?: string; stepSeconds?: number }) {
   const [active, setActive] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  // Seconds until an automatic retry, while the AI provider is busy.
+  const [retryIn, setRetryIn] = useState<number | null>(null);
+  useEffect(() => onAiRetry(setRetryIn), []);
   useEffect(() => {
     const started = Date.now();
     const timer = setInterval(() => {
@@ -27,7 +31,11 @@ export function WorkingCard({ title, steps, hint, stepSeconds = 6 }: { title: st
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-bold text-slate-900">{title}</p>
-            <p className="text-xs text-slate-500 tabular-nums">{elapsed}s{hint ? ` · ${hint}` : ''}</p>
+            {retryIn !== null ? (
+              <p className="text-xs font-semibold text-amber-700 tabular-nums">The AI is busy. Trying again in {retryIn}s…</p>
+            ) : (
+              <p className="text-xs text-slate-500 tabular-nums">{elapsed}s{hint ? ` · ${hint}` : ''}</p>
+            )}
           </div>
         </div>
         <ol className="mt-4 space-y-2.5">

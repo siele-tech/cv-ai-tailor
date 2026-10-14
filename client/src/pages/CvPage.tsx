@@ -20,15 +20,18 @@ import { LayoutEditor } from '../components/LayoutEditor';
 import { ScoreRing } from '../components/ScoreRing';
 import { Button, EmptyState, Field, Icon, LoadingBlock, Notice, TextArea, type IconName } from '../components/ui';
 import { WorkingCard } from '../components/WorkingCard';
+import { ApplicationCard, CoverLetterCard, InterviewCard, LinkedinCard, ShareCard } from '../components/Extras';
+import { notifyIfHidden } from '../notify';
 import { useDraft, useSession, useToast } from '../state';
-import type { CvContent, Job, Profile } from '../types';
+import { DESIGN_OPTIONS, statusOption, type CvContent, type Design, type Job, type Profile } from '../types';
 
-type Tab = 'preview' | 'ai' | 'match' | 'edit';
+type Tab = 'preview' | 'ai' | 'match' | 'edit' | 'more';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'preview', label: 'Preview', icon: 'eye' },
   { id: 'ai', label: 'Ask AI', icon: 'sparkles' },
   { id: 'match', label: 'Match', icon: 'chart' },
   { id: 'edit', label: 'Edit', icon: 'edit' },
+  { id: 'more', label: 'More', icon: 'plus' },
 ];
 
 const REFINE_STEPS = ['Reading your instruction', 'Updating your CV', 'Checking every claim against your master CV', 'Re-scoring the match'];
@@ -58,6 +61,9 @@ export function CvPage() {
   const [master, setMaster] = useState<Profile | null>(null);
   const [highlight, setHighlight] = useState(true);
   const [lastChange, setLastChange] = useState<ChangeSet | null>(null);
+  const [pages, setPages] = useState<number | null>(null);
+  const [fitting, setFitting] = useState(false);
+  const [wordBusy, setWordBusy] = useState(false);
 
   const isNew = id === 'new';
   const ready = draft !== null && (isNew ? true : draft.id === id);
@@ -91,6 +97,23 @@ export function CvPage() {
       cancelled = true;
     };
   }, []);
+
+  const contentKey = ready ? JSON.stringify(draft.content) : '';
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .pageCount(draft.content)
+        .then((res) => !cancelled && setPages(res.pages))
+        .catch(() => undefined);
+    }, 800);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentKey]);
 
   // Warn before a refresh or tab close discards work that is not in the history yet.
   const unsaved = ready && (!draft.id || draft.dirty);
@@ -144,6 +167,46 @@ export function CvPage() {
     setDraft({ ...draft!, fresh: false });
   }
 
+  async function downloadWord() {
+    setWordBusy(true);
+    try {
+      const { blob, filename } = await api.docx(draft!.content, draft!.job.title, draft!.job.company);
+      saveBlob(blob, filename);
+      toast('success', `Downloaded ${filename}`);
+    } catch (err) {
+      toast('error', errorMessage(err));
+    } finally {
+      setWordBusy(false);
+    }
+  }
+
+  async function fitToOnePage() {
+    setFitting(true);
+    const before = draft!;
+    try {
+      const result = await api.onePage(before.job, before.content, before.analysis);
+      const diff = changesBetween(before.content, result.content);
+      setDraft({
+        ...before,
+        content: result.content,
+        analysis: result.analysis,
+        chat: [...(before.chat ?? []), { from: 'you', text: 'Fit my CV on one page' }, { from: 'ai', text: result.reply }],
+        dirty: true,
+        fresh: false,
+      });
+      setPages(result.pages);
+      setLastChange(diff);
+      setHighlight(true);
+      setEditorKey((k) => k + 1);
+      toast(result.pages <= 1 ? 'success' : 'info', result.reply);
+      notifyIfHidden(result.pages <= 1 ? 'Your CV now fits on one page' : 'Your CV was shortened', before.job.title);
+    } catch (err) {
+      toast('error', errorMessage(err));
+    } finally {
+      setFitting(false);
+    }
+  }
+
   async function downloadPdf() {
     setBusy('pdf');
     try {
@@ -165,10 +228,11 @@ export function CvPage() {
     }
     setBusy('save');
     try {
-      const { id: existingId, dirty: _dirty, chat: _chat, fresh: _fresh, ...body } = draft!;
+      const { id: existingId, dirty: _dirty, chat: _chat, fresh: _fresh, application: _app, share: _share, ...body } = draft!;
       const { version } = existingId ? await api.updateVersion(existingId, body) : await api.createVersion(body);
       const { createdAt: _c, updatedAt: _u, ...rest } = version;
       setDraft({ ...rest, chat: draft!.chat, dirty: false });
+      setPages(null);
       toast('success', existingId ? 'Changes saved.' : 'Saved to your history.');
       if (!existingId) navigate(`/cv/${version.id}`, { replace: true });
     } catch (err) {
@@ -226,6 +290,7 @@ export function CvPage() {
       setEditorKey((k) => k + 1);
       setNewSkills(result.newSkills.filter((skill) => !declinedSkills.current.has(skill)));
       toast('success', `${describeChanges(diff)}${scoreNote}`);
+      notifyIfHidden('Your CV has been updated', describeChanges(diff));
       if (returnTo !== tab) goTo(returnTo);
     } catch (err) {
       toast('error', errorMessage(err));
@@ -304,6 +369,9 @@ export function CvPage() {
         <div className="relative mt-3 flex flex-wrap gap-1.5 text-xs font-semibold">
           <span className="rounded-full bg-white/15 px-2.5 py-1">{job.emphasis}</span>
           <span className="rounded-full bg-white/15 px-2.5 py-1">{draft.generatedBy === 'ai' ? 'AI-tailored' : 'Demo, no AI used'}</span>
+          {draft.id && draft.application && draft.application.status !== 'not_applied' && (
+            <span className="rounded-full bg-white/90 px-2.5 py-1 text-brand-800">{statusOption(draft.application.status).label}</span>
+          )}
           <span className={`rounded-full px-2.5 py-1 ${saveState === 'Saved' ? 'bg-emerald-400/25 text-emerald-50' : 'bg-amber-300/25 text-amber-50'}`}>{saveState}</span>
         </div>
       </div>
@@ -380,7 +448,7 @@ export function CvPage() {
       )}
 
       {/* ---------- tabs ---------- */}
-      <div role="tablist" aria-label="CV views" className="sticky top-14 z-20 -mx-1 grid grid-cols-4 gap-1 rounded-2xl border border-white/70 bg-white/85 p-1 shadow-sm backdrop-blur">
+      <div role="tablist" aria-label="CV views" className="sticky top-14 z-20 -mx-1 grid grid-cols-5 gap-1 rounded-2xl border border-white/70 bg-white/85 p-1 shadow-sm backdrop-blur">
         {TABS.map((item) => (
           <button
             key={item.id}
@@ -422,6 +490,43 @@ export function CvPage() {
               Show all changes compared with my master CV instead
             </button>
           )}
+          <div className="rounded-2xl bg-white/85 p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold tracking-wide text-slate-500 uppercase">Design</p>
+              {pages !== null && (
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${pages <= 1 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                  {pages} page{pages === 1 ? '' : 's'}
+                </span>
+              )}
+            </div>
+            <div className="mt-2 grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="PDF design">
+              {DESIGN_OPTIONS.map((d) => {
+                const selected = (content.design ?? 'professional') === d.id;
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    title={d.hint}
+                    onClick={() => setContent({ design: d.id as Design })}
+                    className={`min-h-11 rounded-xl px-1 text-xs font-bold transition ${selected ? 'bg-gradient-to-br from-brand-600 to-violet-600 text-white shadow' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}
+                  >
+                    {d.name}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-2.5 grid grid-cols-2 gap-2">
+              <Button size="sm" icon="sparkles" onClick={fitToOnePage} loading={fitting} disabled={busy !== null || fitting || pages === 1}>
+                {pages === 1 ? 'Fits on 1 page' : 'Fit on one page'}
+              </Button>
+              <Button size="sm" icon="download" onClick={downloadWord} loading={wordBusy} disabled={wordBusy}>
+                Word (.docx)
+              </Button>
+            </div>
+          </div>
+          {fitting && <WorkingCard title="Fitting your CV on one page" steps={['Choosing what matters most for this job', 'Tightening the wording', 'Checking the page count']} hint="usually 10–40 seconds" stepSeconds={6} />}
           <CvPreview content={content} changes={shownChanges} />
           <p className="text-center text-xs text-slate-500">The PDF uses exactly this content and order. Green highlighting is never printed.</p>
         </div>
@@ -448,6 +553,21 @@ export function CvPage() {
               Another job
             </Button>
           </div>
+        </div>
+      )}
+
+      {tab === 'more' && (
+        <div className="animate-rise space-y-3">
+          <ApplicationCard
+            key={draft.id ?? 'new'}
+            versionId={draft.id}
+            value={draft.application}
+            onSaved={(application) => setDraft({ ...draft, application })}
+          />
+          <CoverLetterCard draft={draft} aiOn={aiOn} onChange={(coverLetter) => editDraft((d) => ({ ...d, coverLetter }))} />
+          <InterviewCard draft={draft} aiOn={aiOn} onChange={(interviewPrep) => editDraft((d) => ({ ...d, interviewPrep }))} />
+          <ShareCard versionId={draft.id} share={draft.share} onChange={(share) => setDraft({ ...draft, share })} />
+          <LinkedinCard aiOn={aiOn} target={[job.title, job.emphasis].filter(Boolean).join(', ')} />
         </div>
       )}
 

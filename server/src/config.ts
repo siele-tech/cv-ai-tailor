@@ -30,6 +30,10 @@ export interface Config {
   corsOrigins: string[];
   serveClient: boolean;
   maxUploadBytes: number;
+  /** AI requests per member per day; 0 means unlimited. */
+  aiDailyLimit: number;
+  /** AI requests per day for the owner; 0 means unlimited. */
+  aiDailyLimitOwner: number;
   ai: {
     apiKey: string;
     baseUrl: string;
@@ -94,6 +98,8 @@ export function loadConfig(rawSource: NodeJS.ProcessEnv = process.env): Config {
       .filter(Boolean),
     serveClient: source.SERVE_CLIENT !== 'false',
     maxUploadBytes: num(source.MAX_UPLOAD_MB, 5) * 1024 * 1024,
+    aiDailyLimit: source.AI_DAILY_LIMIT === '0' ? 0 : num(source.AI_DAILY_LIMIT, 40),
+    aiDailyLimitOwner: num(source.AI_DAILY_LIMIT_OWNER, 0),
     ai: {
       apiKey: source.AI_API_KEY?.trim() ?? '',
       baseUrl: (source.AI_BASE_URL?.trim() || 'https://api.openai.com/v1').replace(/\/$/, ''),

@@ -9,11 +9,15 @@ import { HistoryPage } from './pages/HistoryPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { SharedPage } from './pages/SharedPage';
 import { TailorPage } from './pages/TailorPage';
 import { AppProviders, useSession } from './state';
 
 function App() {
   const { signedIn } = useSession();
+  // Shared CV links work for anyone, signed in or not.
+  const shared = /^\/s\/([A-Za-z0-9_-]{20,40})$/.exec(window.location.pathname);
+  if (shared?.[1]) return <SharedPage token={shared[1]} />;
   if (!signedIn) return <LoginPage />;
   return (
     <Routes>

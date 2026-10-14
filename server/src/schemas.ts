@@ -33,6 +33,8 @@ export const contactSchema = z.object({
   portfolio: text(300),
 });
 
+export type Contact = z.infer<typeof contactSchema>;
+
 export const experienceSchema = z.object({
   id: itemId,
   title: text(160),
@@ -139,6 +141,11 @@ export const EMPHASES = [
   'Software Development',
 ] as const;
 
+// ---------- PDF designs ----------
+
+export const DESIGNS = ['professional', 'modern', 'classic', 'compact'] as const;
+export type Design = (typeof DESIGNS)[number];
+
 // ---------- CV structure (section order and heading names) ----------
 
 export const SECTION_KEYS = [
@@ -244,6 +251,8 @@ export const cvContentSchema = z.object({
   languages: z.array(languageSchema).max(20).default([]),
   /** Each CV carries its own copy of the structure, so versions stay independent. */
   layout: layoutSchema,
+  /** Visual design of the PDF. Unknown values fall back to the default. */
+  design: z.enum(DESIGNS).default('professional').catch('professional'),
 });
 export type CvContent = z.infer<typeof cvContentSchema>;
 
@@ -283,6 +292,8 @@ export const versionInputSchema = z.object({
   analysis: analysisSchema.default(emptyAnalysis),
   generatedBy: z.enum(GENERATORS).default('demo'),
   aiModel: text(120),
+  coverLetter: text(8000),
+  interviewPrep: z.lazy(() => interviewPrepSchema).optional(),
 });
 export type VersionInput = z.infer<typeof versionInputSchema>;
 
@@ -298,8 +309,32 @@ export const regenerateSummarySchema = z.object({
 });
 
 export const loginSchema = z.object({
+  /** Empty for the owner, who signs in with APP_PASSWORD alone. */
+  email: z.string().trim().toLowerCase().max(160).default(''),
   password: z.string().min(1).max(200),
 });
+
+const email = z.string().trim().toLowerCase().max(160).regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, 'Enter a valid email address');
+const newPassword = z.string().min(8, 'Use at least 8 characters').max(200);
+
+export const registerSchema = z.object({
+  code: z.string().trim().toUpperCase().min(4, 'Enter your invite code').max(40),
+  name: z.string().trim().min(1, 'Enter your name').max(120),
+  email,
+  password: newPassword,
+});
+
+export const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword,
+});
+
+export const inviteCreateSchema = z.object({
+  maxUses: z.coerce.number().int().min(1).max(50).default(1),
+  note: text(120),
+});
+
+export const userUpdateSchema = z.object({ disabled: z.boolean() });
 
 // ---------- what we ask the model for ----------
 // Kept deliberately small: the model chooses, orders and rephrases. Facts (names, dates,
@@ -394,3 +429,67 @@ export function describeIssues(error: z.ZodError): string[] {
     return where ? `${where}: ${issue.message}` : issue.message;
   });
 }
+
+// ---------- documents that go with an application ----------
+
+export const LETTER_TONES = ['professional', 'warm', 'confident', 'concise'] as const;
+
+export const interviewPrepSchema = z.object({
+  questions: z
+    .array(z.object({ question: text(400), category: text(40), why: text(400), answer: text(2000) }))
+    .max(20)
+    .default([]),
+  gaps: z
+    .array(z.object({ gap: text(200), advice: text(1000) }))
+    .max(15)
+    .default([]),
+  questionsToAsk: list(10, 300),
+});
+export type InterviewPrep = z.infer<typeof interviewPrepSchema>;
+
+export const linkedinSchema = z.object({
+  headline: text(220),
+  about: text(2600),
+  skills: list(15, 80),
+});
+
+export const coverLetterRequestSchema = z.object({
+  job: jobSchema,
+  content: cvContentSchema,
+  analysis: analysisSchema.default(emptyAnalysis),
+  tone: z.enum(LETTER_TONES).default('professional'),
+});
+
+export const interviewRequestSchema = z.object({
+  job: jobSchema,
+  content: cvContentSchema,
+  analysis: analysisSchema.default(emptyAnalysis),
+});
+
+export const linkedinRequestSchema = z.object({ target: text(300) });
+
+export const letterFileRequestSchema = z.object({
+  letter: z.string().trim().min(20, 'Write or generate the letter first').max(8000),
+  contact: contactSchema.default(emptyContact),
+  jobTitle: text(160),
+  company: text(160),
+  design: z.enum(DESIGNS).default('professional').catch('professional'),
+});
+
+// ---------- application tracker ----------
+
+export const APPLICATION_STATUSES = ['not_applied', 'applied', 'interview', 'offer', 'rejected', 'withdrawn'] as const;
+export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
+
+export const applicationSchema = z.object({
+  status: z.enum(APPLICATION_STATUSES).default('not_applied'),
+  /** yyyy-mm-dd, or empty */
+  appliedAt: z
+    .string()
+    .trim()
+    .max(10)
+    .default('')
+    .refine((v) => v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v), 'Use a date like 2026-10-14'),
+  notes: text(2000),
+});
+export type Application = z.infer<typeof applicationSchema>;

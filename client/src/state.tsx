@@ -55,7 +55,10 @@ function ToastProvider({ children }: { children: ReactNode }) {
 interface Session {
   signedIn: boolean;
   status: Status | null;
-  signIn(password: string): Promise<void>;
+  /** email is empty for the owner, who signs in with the owner password alone */
+  signIn(email: string, password: string): Promise<void>;
+  join(details: { code: string; name: string; email: string; password: string }): Promise<void>;
+  refreshStatus(): void;
   signOut(): void;
 }
 
@@ -138,12 +141,20 @@ export function AppProviders({ children }: { children: ReactNode }) {
     () => ({
       signedIn,
       status,
-      signIn: async (password) => {
-        const { token } = await api.login(password);
+      signIn: async (email, password) => {
+        const { token } = await api.login(email, password);
+        setToken(token);
+        setSignedIn(true);
+      },
+      join: async (details) => {
+        const { token } = await api.register(details);
         setToken(token);
         setSignedIn(true);
       },
       signOut,
+      refreshStatus: () => {
+        api.status().then(setStatus).catch(() => undefined);
+      },
     }),
     [signedIn, status, signOut],
   );

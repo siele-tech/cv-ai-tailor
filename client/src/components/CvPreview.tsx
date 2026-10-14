@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { isChangedBullet, type ChangeSet } from '../changes';
-import { SECTION_NAMES, type CvContent, type SectionKey } from '../types';
+import { SECTION_NAMES, type CvContent, type Design, type SectionKey } from '../types';
 
 /** Marks text the AI wrote or reworded, when highlighting is switched on. */
 const MARK = 'rounded bg-emerald-100/80 ring-1 ring-emerald-200 box-decoration-clone px-0.5';
@@ -11,8 +11,22 @@ const MARK = 'rounded bg-emerald-100/80 ring-1 ring-emerald-200 box-decoration-c
 const join = (parts: string[], sep: string) => parts.map((p) => p.trim()).filter(Boolean).join(sep);
 const dates = (start: string, end: string) => join([start, end], ' – ');
 
-function Heading({ children }: { children: ReactNode }) {
-  return <h3 className="mt-5 mb-2 border-b border-slate-300 pb-1 text-[11px] font-bold tracking-[0.12em] text-cv uppercase">{children}</h3>;
+function Heading({ children, design }: { children: ReactNode; design: Design }) {
+  if (design === 'modern') {
+    return (
+      <h3 className="mt-5 mb-2 flex items-center gap-2 text-[11px] font-bold tracking-[0.12em] text-[#3730a3] uppercase">
+        <span className="inline-block h-3 w-[3px] bg-[#3730a3]" aria-hidden="true" />
+        {children}
+      </h3>
+    );
+  }
+  const look =
+    design === 'classic'
+      ? 'mt-5 mb-2 border-b border-slate-500 pb-1 text-center text-[12px] text-slate-900'
+      : design === 'compact'
+        ? 'mt-3 mb-1 border-b border-slate-300 pb-0.5 text-[10px] text-cv'
+        : 'mt-5 mb-2 border-b border-slate-300 pb-1 text-[11px] text-cv';
+  return <h3 className={`${look} font-bold tracking-[0.12em] uppercase`}>{children}</h3>;
 }
 
 function TitleRow({ title, when }: { title: string; when: string }) {
@@ -145,19 +159,38 @@ export function CvPreview({ content, changes = null }: { content: CvContent; cha
   const contactLine = join([contact.email, contact.phone, contact.location], '  |  ');
   const linkLine = join([contact.linkedin, contact.github, contact.portfolio], '  |  ');
 
+  const design: Design = content.design ?? 'professional';
+  const body =
+    design === 'classic'
+      ? 'font-serif text-[13.5px] leading-relaxed'
+      : design === 'compact'
+        ? 'text-[11.5px] leading-snug [&_li]:my-0'
+        : 'text-[13px] leading-relaxed';
+
   return (
-    <article aria-label="CV preview" className="rounded-lg border border-slate-300 bg-white px-5 py-6 text-[13px] leading-relaxed text-slate-900 shadow-md sm:px-8 sm:py-8">
-      <h2 className="text-2xl leading-tight font-bold text-cv">{contact.fullName || 'Your Name'}</h2>
-      {contact.headline && <p className="mt-0.5 text-sm">{contact.headline}</p>}
-      {contactLine && <p className="mt-1.5 text-xs break-words text-slate-600">{contactLine}</p>}
-      {linkLine && <p className="text-xs break-words text-slate-600">{linkLine}</p>}
+    <article aria-label="CV preview" className={`overflow-hidden rounded-lg border border-slate-300 bg-white px-5 py-6 text-slate-900 shadow-md sm:px-8 sm:py-8 ${body}`}>
+      {design === 'modern' ? (
+        <header className="-mx-5 -mt-6 mb-2 bg-[#3730a3] px-5 pt-6 pb-4 text-white sm:-mx-8 sm:-mt-8 sm:px-8 sm:pt-8">
+          <h2 className="text-2xl leading-tight font-bold">{contact.fullName || 'Your Name'}</h2>
+          {contact.headline && <p className="mt-0.5 text-sm text-white/90">{contact.headline}</p>}
+          {contactLine && <p className="mt-1.5 text-xs font-semibold break-words text-white/90">{contactLine}</p>}
+          {linkLine && <p className="text-xs font-semibold break-words text-white/90">{linkLine}</p>}
+        </header>
+      ) : (
+        <header className={design === 'classic' ? 'border-b border-slate-800 pb-2 text-center' : ''}>
+          <h2 className={`leading-tight font-bold ${design === 'classic' ? 'text-[26px] text-slate-900' : design === 'compact' ? 'text-xl text-cv' : 'text-2xl text-cv'}`}>{contact.fullName || 'Your Name'}</h2>
+          {contact.headline && <p className="mt-0.5 text-sm">{contact.headline}</p>}
+          {contactLine && <p className="mt-1.5 text-xs break-words text-slate-600">{contactLine}</p>}
+          {linkLine && <p className="text-xs break-words text-slate-600">{linkLine}</p>}
+        </header>
+      )}
 
       {content.layout.sections.map((section) => {
-        const body = section.hidden ? null : sectionBody(section.key, content, changes);
-        return body ? (
+        const sectionContent = section.hidden ? null : sectionBody(section.key, content, changes);
+        return sectionContent ? (
           <section key={section.key}>
-            <Heading>{section.title.trim() || SECTION_NAMES[section.key]}</Heading>
-            {body}
+            <Heading design={design}>{section.title.trim() || SECTION_NAMES[section.key]}</Heading>
+            {sectionContent}
           </section>
         ) : null;
       })}
