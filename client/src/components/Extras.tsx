@@ -4,6 +4,7 @@ import { notifyIfHidden } from '../notify';
 import { useToast } from '../state';
 import { STATUS_OPTIONS, type Application, type Draft, type InterviewPrep, type LetterTone, type LinkedinProfile } from '../types';
 import { Button, Card, Icon, Notice, type IconName } from './ui';
+import { CopyLink } from './CopyLink';
 import { WorkingCard } from './WorkingCard';
 
 function Panel({ icon, title, tint, children }: { icon: IconName; title: string; tint: string; children: ReactNode }) {
@@ -369,17 +370,6 @@ export function ShareCard({ versionId, share, onChange }: { versionId?: string; 
     }
   }
 
-  async function send() {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: 'My CV', url: link });
-        return;
-      } catch {
-        // cancelled
-      }
-    }
-    await copy(link, toast, 'Link');
-  }
 
   return (
     <Panel icon="eye" title="Share by link" tint="bg-emerald-100 text-emerald-700">
@@ -388,15 +378,10 @@ export function ShareCard({ versionId, share, onChange }: { versionId?: string; 
       ) : link ? (
         <div className="space-y-3">
           <p className="text-sm leading-relaxed text-slate-600">Anyone with this link can view and download the saved version of this CV, including your contact details. Not the job advert or your match.</p>
-          <p className="rounded-xl bg-emerald-50 p-3 font-mono text-xs break-all text-emerald-900">{link}</p>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="primary" size="sm" onClick={send}>
-              Send link
-            </Button>
-            <Button variant="danger" size="sm" onClick={() => toggle(false)} loading={busy}>
-              Switch off
-            </Button>
-          </div>
+          <CopyLink link={link} shareTitle="My CV" shareText="Here is my CV:" />
+          <Button variant="danger" size="sm" className="w-full" onClick={() => toggle(false)} loading={busy}>
+            Switch the link off
+          </Button>
         </div>
       ) : (
         <div className="space-y-3">

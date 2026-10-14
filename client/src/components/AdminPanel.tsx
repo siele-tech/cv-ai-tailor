@@ -2,23 +2,12 @@ import { useEffect, useState } from 'react';
 import { api, errorMessage } from '../api';
 import { useToast } from '../state';
 import type { AdminUser, Invite } from '../types';
+import { CopyLink, copyText } from './CopyLink';
 import { Button, Card, ConfirmDialog, Icon, LoadingBlock, Notice, formatDate } from './ui';
 
 const inviteLink = (code: string) => `${window.location.origin}/?invite=${encodeURIComponent(code)}`;
 
-async function shareInvite(code: string): Promise<'shared' | 'copied'> {
-  const text = `Join me on CV Tailor AI to tailor your CV to any job. Open ${inviteLink(code)} and your invite code ${code} is filled in for you.`;
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: 'CV Tailor AI invite', text });
-      return 'shared';
-    } catch {
-      // cancelled: fall through to copying
-    }
-  }
-  await navigator.clipboard.writeText(text);
-  return 'copied';
-}
+const inviteMessage = (code: string) => `Join me on CV Tailor AI to tailor your CV to any job. Your invite code is ${code}.`;
 
 /** Owner tools: invite codes for friends, and the list of people using the app. */
 export function AdminPanel() {
@@ -31,6 +20,8 @@ export function AdminPanel() {
   const [note, setNote] = useState('');
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<AdminUser | null>(null);
+  // The code just created, shown with its link ready to copy.
+  const [latest, setLatest] = useState<Invite | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const load = () => {
@@ -50,8 +41,8 @@ export function AdminPanel() {
       const { invite } = await api.createInvite(uses, note.trim());
       setInvites((list) => [invite, ...(list ?? [])]);
       setNote('');
-      const how = await shareInvite(invite.code).catch(() => null);
-      toast('success', how === 'copied' ? `Invite ${invite.code} created and copied. Paste it to your friend.` : `Invite ${invite.code} created.`);
+      setLatest(invite);
+      toast('success', `Invite ${invite.code} created. Copy the link and send it to your friend.`);
     } catch (err) {
       toast('error', errorMessage(err));
     } finally {
@@ -127,8 +118,18 @@ export function AdminPanel() {
           </label>
         </div>
         <Button variant="primary" icon="sparkles" className="mt-3 w-full" onClick={create} loading={creating}>
-          Create and share invite
+          Create invite link
         </Button>
+
+        {latest && !latest.revoked && (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-3">
+            <p className="mb-2 text-sm font-semibold text-emerald-900">
+              Invite link for {latest.note || 'your friend'} <span className="font-mono">({latest.code})</span>
+            </p>
+            <CopyLink link={inviteLink(latest.code)} shareTitle="CV Tailor AI invite" shareText={inviteMessage(latest.code)} />
+            <p className="mt-2 text-xs text-emerald-900/80">Opening the link takes them to the join screen with the code filled in.</p>
+          </div>
+        )}
 
         {invites.length > 0 && (
           <ul className="mt-4 divide-y divide-slate-100">
@@ -144,8 +145,8 @@ export function AdminPanel() {
                   </div>
                   {usable && (
                     <>
-                      <Button size="sm" onClick={() => shareInvite(invite.code).then((how) => how === 'copied' && toast('success', 'Invite copied.')).catch(() => undefined)}>
-                        Share
+                      <Button size="sm" icon="clip" onClick={() => copyText(inviteLink(invite.code)).then((done) => (done ? toast('success', 'Invite link copied.') : setLatest(invite)))}>
+                        Copy link
                       </Button>
                       <Button size="sm" variant="danger" aria-label={`Switch off ${invite.code}`} icon="trash" onClick={() => revoke(invite)} />
                     </>
