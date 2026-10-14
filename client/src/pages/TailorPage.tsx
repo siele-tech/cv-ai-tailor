@@ -39,6 +39,7 @@ export function TailorPage() {
   const emphasisId = useId();
 
   const [job, setJob] = useState<Job>(readForm);
+  const [customField, setCustomField] = useState(() => !(EMPHASES as readonly string[]).includes(readForm().emphasis));
   const [profileReady, setProfileReady] = useState<boolean | null>(null);
   const [errors, setErrors] = useState<{ title?: string; description?: string }>({});
   const [busy, setBusy] = useState(false);
@@ -136,22 +137,40 @@ export function TailorPage() {
           <label htmlFor={emphasisId} className="mb-1.5 block text-sm font-medium text-slate-700">
             Industry or field
           </label>
-          <input
+          {/* A real dropdown: datalist suggestions do not show reliably on Android. */}
+          <select
             id={emphasisId}
-            list={`${emphasisId}-options`}
-            value={job.emphasis}
-            maxLength={80}
-            onChange={(e) => set({ emphasis: e.target.value as Emphasis })}
-            onFocus={(e) => e.target.select()}
-            placeholder="e.g. Healthcare & Nursing"
-            className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-          />
-          <datalist id={`${emphasisId}-options`}>
+            value={customField ? '__other__' : job.emphasis}
+            onChange={(e) => {
+              if (e.target.value === '__other__') {
+                setCustomField(true);
+                set({ emphasis: '' as Emphasis });
+              } else {
+                setCustomField(false);
+                set({ emphasis: e.target.value as Emphasis });
+              }
+            }}
+            className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+          >
             {EMPHASES.map((emphasis) => (
-              <option key={emphasis} value={emphasis} />
+              <option key={emphasis} value={emphasis}>
+                {emphasis}
+              </option>
             ))}
-          </datalist>
-          <p className="mt-1 text-xs text-slate-500">Pick a suggestion or type your own.</p>
+            <option value="__other__">Other (type your own)…</option>
+          </select>
+          {customField && (
+            <input
+              autoFocus
+              aria-label="Your industry or field"
+              value={job.emphasis}
+              maxLength={80}
+              onChange={(e) => set({ emphasis: e.target.value as Emphasis })}
+              placeholder="e.g. Aviation, Social work, Mining"
+              className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+            />
+          )}
+          <p className="mt-1 text-xs text-slate-500">The AI uses the vocabulary and priorities of this field.</p>
         </div>
         <TextArea
           label="Job description"
