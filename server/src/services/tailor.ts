@@ -57,10 +57,21 @@ export async function tailorCv(config: Config, profile: Profile, job: Job, layou
 }
 
 export interface RefineResult extends TailorResult {
+  /** Set when the message was a new job description and the CV was re-tailored to it. */
+  job?: Job;
   /** The model's short note to the user about what it did or declined. */
   reply: string;
   /** Skills added on the user's say-so that their master CV does not list yet. */
   newSkills: string[];
+}
+
+/**
+ * People paste whole job adverts into the chat box. Long text, or medium-length text that reads
+ * like an advert, is taken as a new job description rather than an editing instruction.
+ */
+export function looksLikeJobAdvert(text: string): boolean {
+  const advertWords = /\b(requirements?|responsibilities|qualifications|job description|about the role|what you('|’)ll do|we are looking for|how to apply)\b/i;
+  return text.length >= 900 || (text.length >= 300 && advertWords.test(text));
 }
 
 /** Revise an existing CV according to a free-text instruction from the user. */
@@ -71,6 +82,18 @@ export async function refineCv(
   current: CvContent,
   instruction: string,
 ): Promise<RefineResult> {
+  if (looksLikeJobAdvert(instruction)) {
+    // Start again from the master CV against the pasted advert, keeping this CV's structure.
+    const newJob: Job = { ...job, description: instruction };
+    const tailored = await tailorCv(config, profile, newJob, current.layout);
+    return {
+      ...tailored,
+      job: newJob,
+      reply:
+        'That looks like a job description, so I tailored your CV to it from your master CV. If the job title or company differ, change them in the Edit tab.',
+      newSkills: [],
+    };
+  }
   if (!aiConfigured(config)) {
     throw new HttpError(503, 'Instructions need an AI provider. Add an AI API key on the server to use this.', 'ai_not_configured');
   }

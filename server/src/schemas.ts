@@ -327,7 +327,7 @@ export const refineRequestSchema = z.object({
   job: jobSchema,
   content: cvContentSchema,
   analysis: analysisSchema.default(emptyAnalysis),
-  instruction: z.string().trim().min(2, 'Type an instruction for the AI').max(2000),
+  instruction: z.string().trim().min(2, 'Type an instruction for the AI').max(20_000, 'That message is too long (20,000 characters max)'),
 });
 
 /** Zod issues flattened to short, user-presentable strings. */

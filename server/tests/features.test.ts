@@ -5,7 +5,7 @@ import { parseLayout, type AiRefineOutput } from '../src/schemas.js';
 import { detectLayout } from '../src/services/heuristicParser.js';
 import { renderCvPdf } from '../src/services/pdf.js';
 import { applyRefinement, applySafeguards } from '../src/services/safeguards.js';
-import { extractLayout, refineCv, tailorCv } from '../src/services/tailor.js';
+import { extractLayout, looksLikeJobAdvert, refineCv, tailorCv } from '../src/services/tailor.js';
 import { job, mockAi, profile, sampleContent, testConfig, type MockAi } from './helpers.js';
 
 let ai: MockAi | undefined;
@@ -209,5 +209,44 @@ describe('fallback model', () => {
     const result = await tailorCv(configFor(ai), profile, job);
     expect(result.aiModel).toBe('main-model');
     expect(ai.requests).toHaveLength(2);
+  });
+});
+
+describe('robustness of real model output', () => {
+  it('trims over-long analysis and content instead of rejecting the whole CV', () => {
+    const long = 'Experience designing, deploying and operating large distributed message brokers in regulated payment environments with strict uptime requirements';
+    const { content, analysis } = applySafeguards(profile, {
+      summary: 'x'.repeat(4000),
+      skills: { technical: ['Node.js'], soft: [] },
+      experience: [{ sourceId: exp.id, bullets: ['Built REST APIs in Node.js. ' + 'More detail. '.repeat(60)] }],
+      projects: [],
+      analysis: { score: 60, matchedSkills: [long], missingSkills: [long], relevantExperience: [long.repeat(5)], keywordsIncluded: [], suggestions: [long.repeat(6)], missingInformation: [long.repeat(6)] },
+    });
+    expect(analysis.missingSkills[0]!.length).toBeLessThanOrEqual(120);
+    expect(analysis.missingSkills[0]!.endsWith('…')).toBe(true);
+    expect(content.summary.length).toBeLessThanOrEqual(3000);
+    expect(content.experience[0]!.bullets[0]!.length).toBeLessThanOrEqual(600);
+    expect(analysis.flags.every((f) => f.length <= 600)).toBe(true);
+  });
+});
+
+describe('a job advert pasted into the chat box', () => {
+  const advert = 'Junior Developer at Example Payments. Responsibilities: build backend services in Node.js and TypeScript, write SQL, support colleagues. Requirements: Node.js, TypeScript, SQL, Git, good communication. ' + 'We value teamwork. '.repeat(10);
+
+  it('is recognised, while ordinary instructions are not', () => {
+    expect(looksLikeJobAdvert(advert)).toBe(true);
+    expect(looksLikeJobAdvert('Make the summary shorter and put education first.')).toBe(false);
+    expect(looksLikeJobAdvert('x '.repeat(500))).toBe(true);
+  });
+
+  it('re-tailors the CV from the master CV against it, even in demo mode', async () => {
+    const current = sampleContent();
+    current.layout = parseLayout({ sections: [{ key: 'education', title: 'Schooling' }] });
+    const result = await refineCv(testConfig(), profile, job, current, advert);
+    expect(result.job?.description).toBe(advert);
+    expect(result.job?.title).toBe(job.title);
+    expect(result.reply).toMatch(/job description/);
+    expect(result.content.layout.sections[0]!.title).toBe('Schooling');
+    expect(result.analysis.matchedSkills).toEqual(expect.arrayContaining(['Node.js', 'TypeScript']));
   });
 });

@@ -223,6 +223,8 @@ export interface ChatMessage {
 }
 
 export interface RefineResult extends TailorResult {
+  /** Present when a pasted job description replaced the job. */
+  job: Job;
   reply: string;
   newSkills: string[];
 }

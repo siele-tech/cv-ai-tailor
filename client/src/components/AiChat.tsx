@@ -2,7 +2,7 @@ import { useId, type FormEvent, type RefObject } from 'react';
 import type { ChatMessage } from '../types';
 import { Button, Card, Notice, Progress } from './ui';
 
-const EXAMPLES = ['Make the summary shorter', 'Rewrite the bullets to sound more senior', 'Put education before experience'];
+const EXAMPLES = ['Make the summary shorter', 'Match the wording of the job description more closely', 'Put education before experience'];
 
 interface Props {
   aiConfigured: boolean;
@@ -30,7 +30,7 @@ export function AiChat({ aiConfigured, messages, value, onChange, onSend, busy, 
         Tell the AI what to change
       </label>
       <p className="mt-0.5 text-sm leading-relaxed text-slate-600">
-        Ask for changes in your own words, or tell it true things about you that are missing, such as where you used a skill the job asks for.
+        Ask for changes in your own words, tell it true things about you that are missing, or paste a full job description to re-tailor this CV to it.
       </p>
 
       {!aiConfigured ? (
@@ -56,7 +56,7 @@ export function AiChat({ aiConfigured, messages, value, onChange, onSend, busy, 
               ref={inputRef}
               rows={3}
               value={value}
-              maxLength={2000}
+              maxLength={20000}
               disabled={busy}
               onChange={(e) => onChange(e.target.value)}
               placeholder="e.g. I used Docker at my current job to package our services. Add it."

@@ -166,6 +166,7 @@ export function CvPage() {
       const result = await api.refine(draft!.job, draft!.content, text);
       setDraft({
         ...draft!,
+        job: result.job,
         content: result.content,
         analysis: result.analysis,
         generatedBy: 'ai',

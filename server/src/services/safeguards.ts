@@ -119,6 +119,10 @@ export function verbatimBullets(exp: Experience, limit = 6): string[] {
   return [...exp.achievements, ...exp.responsibilities].slice(0, limit);
 }
 
+/** Model output can run long. Trim it to the schema's limits rather than rejecting the whole CV. */
+const clip = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`);
+const fit = (items: string[], maxItems: number, maxLen: number) => items.slice(0, maxItems).map((item) => clip(item, maxLen));
+
 const roleLabel = (exp: { title: string; organization: string }) => [exp.title, exp.organization].filter(Boolean).join(' at ') || 'a role';
 
 interface MergeOptions {
@@ -193,7 +197,7 @@ function mergeProposal(ai: AiTailorOutput, options: MergeOptions): { content: Cv
       flags.push(`${roleLabel(exp)} has no responsibilities or achievements in your master CV, so it appears without bullet points.`);
     }
     // When nothing usable was proposed, the existing wording stays.
-    return { ...exp, bullets: kept.length ? dedupe(kept) : exp.bullets };
+    return { ...exp, bullets: kept.length ? fit(dedupe(kept), 20, 600) : exp.bullets };
   });
 
   // --- projects: names, links and technologies stay factual ---
@@ -208,8 +212,8 @@ function mergeProposal(ai: AiTailorOutput, options: MergeOptions): { content: Cv
       unsupportedIn(proposal.description).length === 0;
     return {
       ...current,
-      description: trustworthy ? proposal.description : current.description,
-      technologies: technologies.length ? technologies : current.technologies,
+      description: trustworthy ? clip(proposal.description, 1500) : current.description,
+      technologies: technologies.length ? fit(technologies, 40, 80) : current.technologies,
     };
   };
 
@@ -245,19 +249,25 @@ function mergeProposal(ai: AiTailorOutput, options: MergeOptions): { content: Cv
     flags.push(`The summary mentions ${summaryTerms.join(', ')}, which ${source} does not show. Edit the summary or ask the AI to fix it.`);
   }
 
-  const content = cvContentSchema.parse({ ...base, summary, skills: { technical, soft }, experience, projects });
+  const content = cvContentSchema.parse({
+    ...base,
+    summary: clip(summary, 3000),
+    skills: { technical: fit(technical, 120, 80), soft: fit(soft, 60, 80) },
+    experience,
+    projects,
+  });
 
   // --- analysis: keep it consistent with what actually ended up in the CV ---
   const cvText = collectStrings({ ...content, layout: undefined }).join('\n').toLowerCase();
   const rejected = new Set(rejectedSkills.map(compact));
   const analysis = analysisSchema.parse({
     score: Math.round(ai.analysis.score),
-    matchedSkills: dedupe(ai.analysis.matchedSkills).filter((s) => !rejected.has(compact(s))),
-    missingSkills: dedupe([...ai.analysis.missingSkills, ...rejectedSkills]),
-    relevantExperience: ai.analysis.relevantExperience,
-    keywordsIncluded: dedupe(ai.analysis.keywordsIncluded).filter((k) => containsTerm(cvText, k)),
-    suggestions: ai.analysis.suggestions,
-    flags: [...ai.analysis.missingInformation.map((m) => `Missing information: ${m}`), ...flags].slice(0, 60),
+    matchedSkills: fit(dedupe(ai.analysis.matchedSkills).filter((s) => !rejected.has(compact(s))), 80, 120),
+    missingSkills: fit(dedupe([...ai.analysis.missingSkills, ...rejectedSkills]), 80, 120),
+    relevantExperience: fit(ai.analysis.relevantExperience, 40, 400),
+    keywordsIncluded: fit(dedupe(ai.analysis.keywordsIncluded).filter((k) => containsTerm(cvText, k)), 80, 120),
+    suggestions: fit(ai.analysis.suggestions, 40, 600),
+    flags: fit([...ai.analysis.missingInformation.map((m) => `Missing information: ${m}`), ...flags], 60, 600),
   });
 
   return { content, analysis };
