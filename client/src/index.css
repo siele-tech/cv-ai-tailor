@@ -1,16 +1,21 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-brand-50: #f1f5fa;
-  --color-brand-100: #dfe8f2;
-  --color-brand-200: #bccfe3;
-  --color-brand-300: #8eaccd;
-  --color-brand-400: #5d85b3;
-  --color-brand-500: #3d6698;
-  --color-brand-600: #2c4f7c;
-  --color-brand-700: #1f3a5f;
-  --color-brand-800: #182d49;
-  --color-brand-900: #111f33;
+  /* App interface: indigo, with violet and fuchsia accents in gradients. */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  /* The CV itself keeps the navy of the PDF, so the preview matches the download. */
+  --color-cv: #1f3a5f;
+  --animate-pop: pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  --animate-rise: rise 0.5s ease-out both;
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
@@ -20,7 +25,10 @@ html {
 }
 
 body {
-  @apply bg-slate-100 text-slate-900 antialiased;
+  @apply bg-[#f5f6fb] text-slate-900 antialiased;
+  background-image: radial-gradient(60rem 30rem at 110% -10%, rgb(224 231 255 / 0.9), transparent 60%),
+    radial-gradient(40rem 25rem at -20% 0%, rgb(250 232 255 / 0.7), transparent 60%);
+  background-attachment: fixed;
   overscroll-behavior-y: none;
 }
 
@@ -33,6 +41,28 @@ textarea {
 
 summary::-webkit-details-marker {
   display: none;
+}
+
+@keyframes pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rise {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes indeterminate {

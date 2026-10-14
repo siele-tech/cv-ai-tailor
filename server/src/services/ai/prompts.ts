@@ -40,7 +40,12 @@ Writing rules:
 - Plain text only: no markdown, no emoji, no bullet characters inside strings.
 
 Analysis rules:
-- score: your honest estimate from 0 to 100 of how well the candidate's real background matches the job's requirements. Base it on evidence in the profile only. Do not inflate it.
+- requirements: list each distinct requirement in the job description (skills, experience, qualifications, licences, duties the candidate must be able to do), at most 15, merging near-duplicates. For each:
+  - "importance": "essential" if the advert requires it, "desirable" if it is described as a plus, an advantage, preferred or nice to have.
+  - "status": judge it fairly against the candidate's real background, as a sensible recruiter would. "met" when the background clearly shows it. "partial" when the background shows closely related or transferable experience (for example training new colleagues is partial evidence of supervising staff; a relevant degree or course is partial evidence of a skill; academic or personal projects count). "missing" only when there is nothing relevant.
+  - "evidence": a short phrase naming where in the CV it is shown, or what related experience earns partial credit. Empty when missing.
+  Be fair, not harsh: credit transferable experience. Do not mark anything "met" or "partial" without real evidence.
+- score: your overall estimate from 0 to 100, consistent with the requirements list.
 - matchedSkills: requirements from the job that the profile demonstrates.
 - missingSkills: requirements from the job that the profile does NOT demonstrate. These must not appear in the CV content.
 - relevantExperience: short phrases naming the roles or projects that best support this application and why.
@@ -56,6 +61,7 @@ Output: reply with ONLY one JSON object, with exactly this structure:
   "projects": [ { "sourceId": string, "description": string, "technologies": string[] } ],
   "analysis": {
     "score": number,
+    "requirements": [ { "requirement": string, "importance": "essential" | "desirable", "status": "met" | "partial" | "missing", "evidence": string } ],
     "matchedSkills": string[],
     "missingSkills": string[],
     "relevantExperience": string[],
@@ -155,6 +161,7 @@ const REVISION_OUTPUT = `Output: reply with ONLY one JSON object, with exactly t
   "projects": [ { "sourceId": string, "description": string, "technologies": string[] } ],
   "analysis": {
     "score": number,
+    "requirements": [ { "requirement": string, "importance": "essential" | "desirable", "status": "met" | "partial" | "missing", "evidence": string } ],
     "matchedSkills": string[],
     "missingSkills": string[],
     "relevantExperience": string[],
@@ -182,7 +189,7 @@ Rules:
 5. Keep the writing rules: concise achievement-oriented bullets, strong verb first, no first-person pronouns, no cliches, no unearned praise words ("scalable", "robust", "seamless", "expert") that nothing supports, no keyword stuffing, plain text with no markdown.
 6. "experience" must contain every role in <current_cv>, each with its "id" as "sourceId" and its full list of bullets after your changes. "projects" likewise. You cannot add, remove or rename roles or projects, or change titles, employers or dates. If asked to, explain in "reply" that the Edit tab is the place for that.
 7. "sectionOrder": only if the instruction asks to reorder sections, list the section keys in the new order, using these keys: summary, skills, experience, projects, education, certifications, volunteer, languages. Otherwise use an empty array.
-8. "analysis": re-assess the revised CV against the job honestly, by the same standards as before. The score rises only when the CV now shows real, relevant evidence. "missingSkills" lists job requirements the candidate still does not demonstrate.
+8. "analysis": re-assess the revised CV against the job, requirement by requirement. For each job requirement give "importance" (essential or desirable), "status" (met when clearly shown, partial when related or transferable experience is shown, missing when nothing relevant) and short "evidence". Be fair, not harsh, and never credit anything without real evidence. "missingSkills" lists requirements the candidate still does not demonstrate.
 9. "reply": one to three plain sentences to the candidate saying what you changed, and anything you declined and why.
 
 ${REVISION_OUTPUT}`;

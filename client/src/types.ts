@@ -175,8 +175,18 @@ export interface CvContent {
   layout: Layout;
 }
 
+export interface Requirement {
+  requirement: string;
+  importance: 'essential' | 'desirable';
+  status: 'met' | 'partial' | 'missing';
+  /** Where the CV shows it, or what related experience earns partial credit. */
+  evidence: string;
+}
+
 export interface Analysis {
   score: number;
+  /** Absent on CVs saved before the checklist existed. */
+  requirements?: Requirement[];
   matchedSkills: string[];
   missingSkills: string[];
   relevantExperience: string[];
@@ -203,6 +213,7 @@ export interface Version extends TailorResult {
 
 export interface VersionSummary {
   id: string;
+  score?: number;
   jobTitle: string;
   company: string;
   emphasis: string;
@@ -255,6 +266,8 @@ export interface Draft extends TailorResult {
   chat?: ChatMessage[];
   /** True when there are edits that have not been saved to the version history. */
   dirty: boolean;
+  /** Just generated and not yet seen: show the "ready" moment. */
+  fresh?: boolean;
 }
 
 export const defaultLayout = (): Layout => ({

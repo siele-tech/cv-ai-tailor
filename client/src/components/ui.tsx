@@ -48,8 +48,8 @@ export function Spinner({ className = 'h-5 w-5' }: { className?: string }) {
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-brand-700 text-white shadow-sm hover:bg-brand-800 active:bg-brand-900',
-  secondary: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 active:bg-slate-100',
+  primary: 'bg-gradient-to-r from-brand-600 to-violet-600 text-white shadow-md shadow-brand-600/25 hover:from-brand-700 hover:to-violet-700 active:scale-[0.98]',
+  secondary: 'border border-slate-200 bg-white text-slate-800 shadow-sm hover:border-brand-200 hover:bg-brand-50/50 active:scale-[0.98]',
   ghost: 'text-brand-700 hover:bg-brand-50 active:bg-brand-100',
   danger: 'border border-red-200 bg-white text-red-700 hover:bg-red-50 active:bg-red-100',
 };
@@ -80,13 +80,13 @@ export function Button({ variant = 'secondary', icon, loading = false, size = 'm
 // ---------- layout pieces ----------
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>{children}</section>;
+  return <section className={`rounded-2xl border border-white/70 bg-white/90 p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04),0_8px_24px_-12px_rgb(67_56_202/0.18)] backdrop-blur ${className}`}>{children}</section>;
 }
 
 export function PageTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="mb-4">
-      <h1 className="text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
+      <h1 className="bg-gradient-to-r from-slate-900 via-brand-800 to-violet-700 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent">{title}</h1>
       {subtitle && <p className="mt-1 text-[15px] leading-relaxed text-slate-600">{subtitle}</p>}
     </div>
   );

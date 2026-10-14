@@ -1,5 +1,9 @@
 import type { ReactNode } from 'react';
+import { isChangedBullet, type ChangeSet } from '../changes';
 import { SECTION_NAMES, type CvContent, type SectionKey } from '../types';
+
+/** Marks text the AI wrote or reworded, when highlighting is switched on. */
+const MARK = 'rounded bg-emerald-100/80 ring-1 ring-emerald-200 box-decoration-clone px-0.5';
 
 // On-screen preview that mirrors the structure and order of the generated PDF
 // (server/src/services/pdf.ts): single column, same sections, same accent colour.
@@ -8,7 +12,7 @@ const join = (parts: string[], sep: string) => parts.map((p) => p.trim()).filter
 const dates = (start: string, end: string) => join([start, end], ' – ');
 
 function Heading({ children }: { children: ReactNode }) {
-  return <h3 className="mt-5 mb-2 border-b border-slate-300 pb-1 text-[11px] font-bold tracking-[0.12em] text-brand-700 uppercase">{children}</h3>;
+  return <h3 className="mt-5 mb-2 border-b border-slate-300 pb-1 text-[11px] font-bold tracking-[0.12em] text-cv uppercase">{children}</h3>;
 }
 
 function TitleRow({ title, when }: { title: string; when: string }) {
@@ -21,11 +25,15 @@ function TitleRow({ title, when }: { title: string; when: string }) {
 }
 
 /** The body of one section, or null when the CV has nothing to show for it. */
-function sectionBody(key: SectionKey, content: CvContent): ReactNode {
+function sectionBody(key: SectionKey, content: CvContent, changes: ChangeSet | null): ReactNode {
   const { skills } = content;
   switch (key) {
     case 'summary':
-      return content.summary.trim() ? <p className="whitespace-pre-line">{content.summary}</p> : null;
+      return content.summary.trim() ? (
+        <p className="whitespace-pre-line">
+          <span className={changes?.summaryChanged ? MARK : ''}>{content.summary}</span>
+        </p>
+      ) : null;
 
     case 'skills':
       if (skills.technical.length === 0 && skills.soft.length === 0) return null;
@@ -34,7 +42,12 @@ function sectionBody(key: SectionKey, content: CvContent): ReactNode {
           {skills.technical.length > 0 && (
             <p>
               <span className="font-semibold">Key skills: </span>
-              {skills.technical.join(', ')}
+              {skills.technical.map((skill, i) => (
+                <span key={skill}>
+                  {i > 0 && ', '}
+                  <span className={changes?.addedSkills.includes(skill) ? MARK : ''}>{skill}</span>
+                </span>
+              ))}
             </p>
           )}
           {skills.soft.length > 0 && (
@@ -57,7 +70,9 @@ function sectionBody(key: SectionKey, content: CvContent): ReactNode {
               {exp.bullets.length > 0 && (
                 <ul className="mt-1 list-disc space-y-0.5 pl-4">
                   {exp.bullets.map((bullet, i) => (
-                    <li key={i}>{bullet}</li>
+                    <li key={i}>
+                      <span className={isChangedBullet(changes, bullet) ? MARK : ''}>{bullet}</span>
+                    </li>
                   ))}
                 </ul>
               )}
@@ -125,20 +140,20 @@ function sectionBody(key: SectionKey, content: CvContent): ReactNode {
   }
 }
 
-export function CvPreview({ content }: { content: CvContent }) {
+export function CvPreview({ content, changes = null }: { content: CvContent; changes?: ChangeSet | null }) {
   const { contact } = content;
   const contactLine = join([contact.email, contact.phone, contact.location], '  |  ');
   const linkLine = join([contact.linkedin, contact.github, contact.portfolio], '  |  ');
 
   return (
     <article aria-label="CV preview" className="rounded-lg border border-slate-300 bg-white px-5 py-6 text-[13px] leading-relaxed text-slate-900 shadow-md sm:px-8 sm:py-8">
-      <h2 className="text-2xl leading-tight font-bold text-brand-700">{contact.fullName || 'Your Name'}</h2>
+      <h2 className="text-2xl leading-tight font-bold text-cv">{contact.fullName || 'Your Name'}</h2>
       {contact.headline && <p className="mt-0.5 text-sm">{contact.headline}</p>}
       {contactLine && <p className="mt-1.5 text-xs break-words text-slate-600">{contactLine}</p>}
       {linkLine && <p className="text-xs break-words text-slate-600">{linkLine}</p>}
 
       {content.layout.sections.map((section) => {
-        const body = section.hidden ? null : sectionBody(section.key, content);
+        const body = section.hidden ? null : sectionBody(section.key, content, changes);
         return body ? (
           <section key={section.key}>
             <Heading>{section.title.trim() || SECTION_NAMES[section.key]}</Heading>

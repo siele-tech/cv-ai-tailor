@@ -19,7 +19,7 @@ export function Section({ title, count, defaultOpen = false, children }: { title
   // Owned here so a re-render never collapses a section the user is typing in.
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)} className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)} className="group rounded-2xl border border-white/70 bg-white/90 shadow-sm backdrop-blur open:shadow-md">
       <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 font-semibold text-slate-900">
         <span>
           {title}

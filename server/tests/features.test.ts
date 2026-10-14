@@ -4,7 +4,7 @@ import { HttpError } from '../src/errors.js';
 import { parseLayout, type AiRefineOutput } from '../src/schemas.js';
 import { detectLayout } from '../src/services/heuristicParser.js';
 import { renderCvPdf } from '../src/services/pdf.js';
-import { applyRefinement, applySafeguards } from '../src/services/safeguards.js';
+import { applyRefinement, applySafeguards, scoreFromRequirements } from '../src/services/safeguards.js';
 import { extractLayout, looksLikeJobAdvert, refineCv, tailorCv } from '../src/services/tailor.js';
 import { job, mockAi, profile, sampleContent, testConfig, type MockAi } from './helpers.js';
 
@@ -94,7 +94,7 @@ function revision(overrides: Partial<AiRefineOutput> = {}): AiRefineOutput {
       { sourceId: exp.id, bullets: ['Built event streaming with Kafka for loan notifications.', 'Ran workloads on Kubernetes clusters.', 'Design MongoDB schemas and optimise slow queries.'] },
     ],
     projects: [],
-    analysis: { score: 78, matchedSkills: ['Node.js', 'Kafka'], missingSkills: ['Kubernetes'], relevantExperience: [], keywordsIncluded: ['Kafka'], suggestions: [], missingInformation: [] },
+    analysis: { score: 78, requirements: [], matchedSkills: ['Node.js', 'Kafka'], missingSkills: ['Kubernetes'], relevantExperience: [], keywordsIncluded: ['Kafka'], suggestions: [], missingInformation: [] },
     ...overrides,
   };
 }
@@ -164,7 +164,7 @@ describe('instructions given before tailoring', () => {
     skills: { technical: ['Node.js', 'Kafka', 'Kubernetes'], soft: [] },
     experience: [{ sourceId: exp.id, bullets: ['Built REST APIs in Node.js.'] }],
     projects: [],
-    analysis: { score: 70, matchedSkills: [], missingSkills: [], relevantExperience: [], keywordsIncluded: [], suggestions: [], missingInformation: [] },
+    analysis: { score: 70, requirements: [], matchedSkills: [], missingSkills: [], relevantExperience: [], keywordsIncluded: [], suggestions: [], missingInformation: [] },
   };
 
   it('counts what the user states there, and nothing more', () => {
@@ -185,7 +185,7 @@ describe('fallback model', () => {
     skills: { technical: ['Node.js'], soft: [] },
     experience: [],
     projects: [],
-    analysis: { score: 50, matchedSkills: [], missingSkills: [], relevantExperience: [], keywordsIncluded: [], suggestions: [], missingInformation: [] },
+    analysis: { score: 50, requirements: [], matchedSkills: [], missingSkills: [], relevantExperience: [], keywordsIncluded: [], suggestions: [], missingInformation: [] },
   });
 
   it('is used when the main model is overloaded', async () => {
@@ -220,7 +220,7 @@ describe('robustness of real model output', () => {
       skills: { technical: ['Node.js'], soft: [] },
       experience: [{ sourceId: exp.id, bullets: ['Built REST APIs in Node.js. ' + 'More detail. '.repeat(60)] }],
       projects: [],
-      analysis: { score: 60, matchedSkills: [long], missingSkills: [long], relevantExperience: [long.repeat(5)], keywordsIncluded: [], suggestions: [long.repeat(6)], missingInformation: [long.repeat(6)] },
+      analysis: { score: 60, requirements: [], matchedSkills: [long], missingSkills: [long], relevantExperience: [long.repeat(5)], keywordsIncluded: [], suggestions: [long.repeat(6)], missingInformation: [long.repeat(6)] },
     });
     expect(analysis.missingSkills[0]!.length).toBeLessThanOrEqual(120);
     expect(analysis.missingSkills[0]!.endsWith('…')).toBe(true);
@@ -248,5 +248,45 @@ describe('a job advert pasted into the chat box', () => {
     expect(result.reply).toMatch(/job description/);
     expect(result.content.layout.sections[0]!.title).toBe('Schooling');
     expect(result.analysis.matchedSkills).toEqual(expect.arrayContaining(['Node.js', 'TypeScript']));
+  });
+});
+
+describe('requirement-based match score', () => {
+  it('weights essentials over desirables and gives half credit for related experience', () => {
+    expect(scoreFromRequirements([])).toBeUndefined();
+    expect(scoreFromRequirements([{ importance: 'essential', status: 'met' }])).toBe(100);
+    expect(scoreFromRequirements([{ importance: 'essential', status: 'partial' }])).toBe(50);
+    // 3 (met) + 1.5 (partial) + 0 (desirable missing) out of 3 + 3 + 1
+    expect(scoreFromRequirements([
+      { importance: 'essential', status: 'met' },
+      { importance: 'essential', status: 'partial' },
+      { importance: 'desirable', status: 'missing' },
+    ])).toBe(64);
+  });
+
+  it('computes the score from the checklist and never credits what the candidate lacks', () => {
+    const { analysis } = applySafeguards(profile, {
+      summary: 'Developer.',
+      skills: { technical: ['Node.js'], soft: [] },
+      experience: [],
+      projects: [],
+      analysis: {
+        score: 10,
+        requirements: [
+          { requirement: 'Node.js APIs', importance: 'essential', status: 'met', evidence: 'REST APIs at Example Fintech' },
+          { requirement: 'Kubernetes experience', importance: 'essential', status: 'met', evidence: 'deployed services' },
+          { requirement: 'Mentoring', importance: 'desirable', status: 'partial', evidence: 'reviewed pull requests' },
+        ],
+        matchedSkills: [],
+        missingSkills: ['Kubernetes'],
+        relevantExperience: [],
+        keywordsIncluded: [],
+        suggestions: [],
+        missingInformation: [],
+      },
+    });
+    expect(analysis.requirements.map((r) => r.status)).toEqual(['met', 'missing', 'partial']);
+    // 3 + 0 + 0.5 out of 7
+    expect(analysis.score).toBe(50);
   });
 });

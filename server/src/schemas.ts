@@ -247,8 +247,22 @@ export const cvContentSchema = z.object({
 });
 export type CvContent = z.infer<typeof cvContentSchema>;
 
+export const REQUIREMENT_IMPORTANCE = ['essential', 'desirable'] as const;
+export const REQUIREMENT_STATUS = ['met', 'partial', 'missing'] as const;
+
+/** One requirement from the job advert and how well the candidate's real background covers it. */
+export const requirementSchema = z.object({
+  requirement: text(200),
+  importance: z.enum(REQUIREMENT_IMPORTANCE).default('essential'),
+  status: z.enum(REQUIREMENT_STATUS).default('missing'),
+  /** Where the CV shows it, or what related experience earns partial credit. */
+  evidence: text(300),
+});
+export type Requirement = z.infer<typeof requirementSchema>;
+
 export const analysisSchema = z.object({
   score: z.number().min(0).max(100).default(0),
+  requirements: z.array(requirementSchema).max(40).default([]),
   matchedSkills: list(80, 120),
   missingSkills: list(80, 120),
   relevantExperience: list(40, 400),
@@ -318,6 +332,21 @@ export const aiTailorSchema = z.object({
     .default([]),
   analysis: z.object({
     score: z.coerce.number().min(0).max(100),
+    requirements: z
+      .array(z.unknown())
+      .default([])
+      .transform((items) =>
+        items
+          .map((item) => (item && typeof item === 'object' ? (item as Record<string, unknown>) : {}))
+          .map((r) => ({
+            requirement: typeof r.requirement === 'string' ? r.requirement.trim() : '',
+            importance: r.importance === 'desirable' ? ('desirable' as const) : ('essential' as const),
+            status: r.status === 'met' || r.status === 'partial' ? r.status : ('missing' as const),
+            evidence: typeof r.evidence === 'string' ? r.evidence.trim() : '',
+          }))
+          .filter((r) => r.requirement)
+          .slice(0, 40),
+      ),
     matchedSkills: looseList,
     missingSkills: looseList,
     relevantExperience: looseList,

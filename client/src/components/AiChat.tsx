@@ -1,6 +1,7 @@
 import { useId, type FormEvent, type RefObject } from 'react';
 import type { ChatMessage } from '../types';
-import { Button, Card, Notice, Progress } from './ui';
+import { Button, Card, Notice } from './ui';
+import { WorkingCard } from './WorkingCard';
 
 const EXAMPLES = ['Make the summary shorter', 'Match the wording of the job description more closely', 'Put education before experience'];
 
@@ -42,7 +43,7 @@ export function AiChat({ aiConfigured, messages, value, onChange, onSend, busy, 
           {messages.length > 0 && (
             <ul className="mt-3 space-y-2" aria-label="Conversation with the AI">
               {messages.slice(-6).map((message, i) => (
-                <li key={i} className={`max-w-[92%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${message.from === 'you' ? 'ml-auto bg-brand-700 text-white' : 'bg-slate-100 text-slate-800'}`}>
+                <li key={i} className={`max-w-[92%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-line ${message.from === 'you' ? 'ml-auto rounded-br-md bg-gradient-to-br from-brand-600 to-violet-600 text-white' : 'rounded-bl-md bg-slate-100 text-slate-800'}`}>
                   <span className="sr-only">{message.from === 'you' ? 'You: ' : 'AI: '}</span>
                   {message.text}
                 </li>
@@ -63,7 +64,7 @@ export function AiChat({ aiConfigured, messages, value, onChange, onSend, busy, 
               className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none disabled:bg-slate-50"
             />
             {busy ? (
-              <Progress label="Applying your instruction…" hint="This usually takes 10 to 40 seconds." />
+              <WorkingCard title="Updating your CV" steps={['Reading your instruction', 'Updating your CV', 'Checking every claim against your master CV', 'Re-scoring the match']} hint="usually 10–40 seconds" stepSeconds={5} />
             ) : (
               <>
                 {!value && (

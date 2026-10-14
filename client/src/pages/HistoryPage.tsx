@@ -82,8 +82,17 @@ export function HistoryPage() {
           {versions.map((item) => (
             <li key={item.id}>
               <Card>
-                <p className="font-semibold text-slate-900">{item.jobTitle}</p>
-                <p className="text-sm text-slate-600">{item.company || 'Company not specified'}</p>
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-900">{item.jobTitle}</p>
+                    <p className="text-sm text-slate-600">{item.company || 'Company not specified'}</p>
+                  </div>
+                  {typeof item.score === 'number' && (
+                    <span className={`shrink-0 rounded-xl px-2.5 py-1.5 text-sm font-extrabold ${item.score >= 70 ? 'bg-emerald-100 text-emerald-700' : item.score >= 45 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700'}`}>
+                      {item.score}%
+                    </span>
+                  )}
+                </div>
                 <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                   <span>Generated {formatDate(item.createdAt)}</span>
                   <span className="rounded-full bg-brand-50 px-2 py-0.5 font-medium text-brand-800">{item.emphasis}</span>

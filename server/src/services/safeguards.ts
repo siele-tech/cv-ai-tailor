@@ -260,8 +260,16 @@ function mergeProposal(ai: AiTailorOutput, options: MergeOptions): { content: Cv
   // --- analysis: keep it consistent with what actually ended up in the CV ---
   const cvText = collectStrings({ ...content, layout: undefined }).join('\n').toLowerCase();
   const rejected = new Set(rejectedSkills.map(compact));
+  // A requirement cannot count as met through something the candidate does not have.
+  const requirements = ai.analysis.requirements.map((req) => {
+    const lacking = unsupportedIn(req.requirement).length > 0;
+    return lacking && req.status !== 'missing' ? { ...req, status: 'missing' as const, evidence: '' } : req;
+  });
+  const fittedRequirements = requirements.slice(0, 40).map((req) => ({ ...req, requirement: clip(req.requirement, 200), evidence: clip(req.evidence, 300) }));
+
   const analysis = analysisSchema.parse({
-    score: Math.round(ai.analysis.score),
+    score: scoreFromRequirements(fittedRequirements) ?? Math.round(ai.analysis.score),
+    requirements: fittedRequirements,
     matchedSkills: fit(dedupe(ai.analysis.matchedSkills).filter((s) => !rejected.has(compact(s))), 80, 120),
     missingSkills: fit(dedupe([...ai.analysis.missingSkills, ...rejectedSkills]), 80, 120),
     relevantExperience: fit(ai.analysis.relevantExperience, 40, 400),
@@ -271,6 +279,23 @@ function mergeProposal(ai: AiTailorOutput, options: MergeOptions): { content: Cv
   });
 
   return { content, analysis };
+}
+
+/**
+ * The match score, computed from the requirement checklist so that it is consistent and
+ * explainable: essential requirements weigh three times as much as desirable ones, and
+ * related or transferable experience earns half credit.
+ */
+export function scoreFromRequirements(requirements: { importance: string; status: string }[]): number | undefined {
+  if (requirements.length === 0) return undefined;
+  let earned = 0;
+  let possible = 0;
+  for (const req of requirements) {
+    const weight = req.importance === 'desirable' ? 1 : 3;
+    possible += weight;
+    earned += weight * (req.status === 'met' ? 1 : req.status === 'partial' ? 0.5 : 0);
+  }
+  return Math.round((earned / possible) * 100);
 }
 
 /** The master profile laid out as a CV, in the candidate's own words. */

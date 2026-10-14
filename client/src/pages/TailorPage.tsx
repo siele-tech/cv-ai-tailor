@@ -1,7 +1,36 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, errorMessage } from '../api';
-import { Button, Card, ConfirmDialog, EmptyState, Field, LoadingBlock, Notice, PageTitle, Progress, TextArea } from '../components/ui';
+import { Button, Card, ConfirmDialog, EmptyState, Field, LoadingBlock, Notice, PageTitle, TextArea } from '../components/ui';
+import { WorkingCard } from '../components/WorkingCard';
+
+const TAILOR_STEPS = [
+  'Reading the job description',
+  'Finding your most relevant experience',
+  'Rewriting your summary and bullet points',
+  'Checking every claim against your master CV',
+  'Scoring how well you match',
+];
+
+/** Let the user know the CV is ready even if they switched to another app while waiting. */
+function announceReady() {
+  try {
+    navigator.vibrate?.([80, 60, 80]);
+  } catch {
+    // vibration is optional
+  }
+  if (document.hidden) {
+    const original = document.title;
+    document.title = 'Your CV is ready - CV Tailor AI';
+    const restore = () => {
+      if (!document.hidden) {
+        document.title = original;
+        document.removeEventListener('visibilitychange', restore);
+      }
+    };
+    document.addEventListener('visibilitychange', restore);
+  }
+}
 import { useDraft, useSession, useToast } from '../state';
 import { EMPHASES, type Emphasis, type Job } from '../types';
 
@@ -72,9 +101,10 @@ export function TailorPage() {
     setFailure('');
     try {
       const result = await api.tailor({ ...job, title: job.title.trim(), company: job.company.trim(), description: job.description.trim(), url: job.url.trim(), instructions: job.instructions.trim() });
-      setDraft({ ...result, dirty: false });
+      setDraft({ ...result, dirty: false, fresh: true });
+      announceReady();
       sessionStorage.removeItem(FORM_KEY);
-      toast('success', result.generatedBy === 'ai' ? 'Your tailored CV is ready.' : 'Demo CV ready (no AI was used).');
+      if (result.generatedBy !== 'ai') toast('info', 'Demo CV ready (no AI was used).');
       navigate('/cv/new');
     } catch (err) {
       setFailure(errorMessage(err));
@@ -168,7 +198,7 @@ export function TailorPage() {
       )}
 
       {busy ? (
-        <Progress label="Analysing the job and tailoring your CV…" hint={status?.aiConfigured ? 'This usually takes 15 to 60 seconds. Keep this page open.' : undefined} />
+        <WorkingCard title="Tailoring your CV" steps={TAILOR_STEPS} hint={status?.aiConfigured ? 'usually 15–60 seconds' : undefined} stepSeconds={status?.aiConfigured ? 7 : 1} />
       ) : (
         <Button type="submit" variant="primary" size="lg" icon="sparkles" className="w-full">
           Tailor My CV

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, errorMessage, saveBlob } from '../api';
+import { changesBetween, changesFromMaster, describeChanges, type ChangeSet } from '../changes';
 import { AiChat } from '../components/AiChat';
 import { AnalysisPanel } from '../components/AnalysisPanel';
 import { CvPreview } from '../components/CvPreview';
@@ -16,16 +17,21 @@ import {
   VolunteerList,
 } from '../components/editors';
 import { LayoutEditor } from '../components/LayoutEditor';
+import { ScoreRing } from '../components/ScoreRing';
 import { Button, EmptyState, Field, Icon, LoadingBlock, Notice, TextArea, type IconName } from '../components/ui';
+import { WorkingCard } from '../components/WorkingCard';
 import { useDraft, useSession, useToast } from '../state';
-import type { CvContent, Job } from '../types';
+import type { CvContent, Job, Profile } from '../types';
 
-type Tab = 'preview' | 'edit' | 'match';
+type Tab = 'preview' | 'ai' | 'match' | 'edit';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'preview', label: 'Preview', icon: 'eye' },
+  { id: 'ai', label: 'Ask AI', icon: 'sparkles' },
+  { id: 'match', label: 'Match', icon: 'chart' },
   { id: 'edit', label: 'Edit', icon: 'edit' },
-  { id: 'match', label: 'Job match', icon: 'chart' },
 ];
+
+const REFINE_STEPS = ['Reading your instruction', 'Updating your CV', 'Checking every claim against your master CV', 'Re-scoring the match'];
 
 export function CvPage() {
   const { id = 'new' } = useParams();
@@ -34,6 +40,7 @@ export function CvPage() {
   const { draft, setDraft, editDraft } = useDraft();
   const { status } = useSession();
   const chatInput = useRef<HTMLTextAreaElement>(null);
+  const top = useRef<HTMLDivElement>(null);
 
   const [tab, setTab] = useState<Tab>('preview');
   const [loadError, setLoadError] = useState('');
@@ -46,6 +53,11 @@ export function CvPage() {
   const [summaryNote, setSummaryNote] = useState<string[]>([]);
   // Remounts the editor when its content is replaced from outside (a regenerated summary).
   const [editorKey, setEditorKey] = useState(0);
+
+  // Making changes visible: what differs from the master CV, or from just before the last AI change.
+  const [master, setMaster] = useState<Profile | null>(null);
+  const [highlight, setHighlight] = useState(true);
+  const [lastChange, setLastChange] = useState<ChangeSet | null>(null);
 
   const isNew = id === 'new';
   const ready = draft !== null && (isNew ? true : draft.id === id);
@@ -69,6 +81,17 @@ export function CvPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getProfile()
+      .then(({ profile }) => !cancelled && setMaster(profile))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Warn before a refresh or tab close discards work that is not in the history yet.
   const unsaved = ready && (!draft.id || draft.dirty);
   useEffect(() => {
@@ -77,6 +100,8 @@ export function CvPage() {
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [unsaved]);
+
+  const fromMaster = useMemo(() => (master && ready ? changesFromMaster(master, draft.content) : null), [master, ready, draft?.content]);
 
   if (loadError) {
     return (
@@ -108,6 +133,16 @@ export function CvPage() {
   const { content, job } = draft;
   const setContent = (patch: Partial<CvContent>) => editDraft((d) => ({ ...d, content: { ...d.content, ...patch } }));
   const setJob = (patch: Partial<Job>) => editDraft((d) => ({ ...d, job: { ...d.job, ...patch } }));
+  const shownChanges = highlight ? (lastChange ?? fromMaster) : null;
+
+  const goTo = (next: Tab) => {
+    setTab(next);
+    top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  function dismissReady() {
+    setDraft({ ...draft!, fresh: false });
+  }
 
   async function downloadPdf() {
     setBusy('pdf');
@@ -130,7 +165,7 @@ export function CvPage() {
     }
     setBusy('save');
     try {
-      const { id: existingId, dirty: _dirty, chat: _chat, ...body } = draft!;
+      const { id: existingId, dirty: _dirty, chat: _chat, fresh: _fresh, ...body } = draft!;
       const { version } = existingId ? await api.updateVersion(existingId, body) : await api.createVersion(body);
       const { createdAt: _c, updatedAt: _u, ...rest } = version;
       setDraft({ ...rest, chat: draft!.chat, dirty: false });
@@ -146,12 +181,17 @@ export function CvPage() {
   async function regenerateSummary() {
     setBusy('summary');
     setSummaryNote([]);
+    const before = draft!.content;
     try {
       const result = await api.regenerateSummary(draft!.job, draft!.content.summary);
+      const after = { ...before, summary: result.summary };
       setContent({ summary: result.summary });
+      setLastChange(changesBetween(before, after));
+      setHighlight(true);
       setEditorKey((k) => k + 1);
       setSummaryNote(result.warnings);
-      toast(result.generatedBy === 'ai' ? 'success' : 'info', result.generatedBy === 'ai' ? 'Summary regenerated.' : 'Demo mode: summary reset to your master CV.');
+      toast(result.generatedBy === 'ai' ? 'success' : 'info', result.generatedBy === 'ai' ? 'New summary written. It is highlighted in green.' : 'Demo mode: summary reset to your master CV.');
+      goTo('preview');
     } catch (err) {
       toast('error', errorMessage(err));
     } finally {
@@ -159,25 +199,34 @@ export function CvPage() {
     }
   }
 
-  async function sendInstruction() {
-    const text = instruction.trim();
+  async function sendInstruction(text = instruction.trim(), returnTo: Tab = 'preview') {
     setBusy('chat');
+    const before = draft!;
     try {
-      const result = await api.refine(draft!.job, draft!.content, text);
+      const result = await api.refine(before.job, before.content, text);
+      const diff = changesBetween(before.content, result.content);
+      const scoreNote =
+        Math.round(result.analysis.score) !== Math.round(before.analysis.score)
+          ? ` Match: ${Math.round(before.analysis.score)}% → ${Math.round(result.analysis.score)}%.`
+          : '';
       setDraft({
-        ...draft!,
+        ...before,
         job: result.job,
         content: result.content,
         analysis: result.analysis,
         generatedBy: 'ai',
         aiModel: result.aiModel,
-        chat: [...(draft!.chat ?? []), { from: 'you', text }, { from: 'ai', text: result.reply }],
+        chat: [...(before.chat ?? []), { from: 'you', text }, { from: 'ai', text: `${result.reply}\n\n${describeChanges(diff)}${scoreNote}` }],
         dirty: true,
+        fresh: false,
       });
+      setLastChange(diff);
+      setHighlight(true);
       setInstruction('');
       setEditorKey((k) => k + 1);
       setNewSkills(result.newSkills.filter((skill) => !declinedSkills.current.has(skill)));
-      toast('success', 'CV updated. Check the preview.');
+      toast('success', `${describeChanges(diff)}${scoreNote}`);
+      if (returnTo !== tab) goTo(returnTo);
     } catch (err) {
       toast('error', errorMessage(err));
     } finally {
@@ -193,7 +242,8 @@ export function CvPage() {
       if (!profile) throw new Error('no profile');
       const known = new Set(profile.skills.technical.map((s) => s.toLowerCase()));
       const additions = newSkills.filter((s) => !known.has(s.toLowerCase()));
-      await api.saveProfile({ ...profile, skills: { ...profile.skills, technical: [...profile.skills.technical, ...additions] } });
+      const { profile: saved } = await api.saveProfile({ ...profile, skills: { ...profile.skills, technical: [...profile.skills.technical, ...additions] } });
+      setMaster(saved);
       toast('success', `Added ${newSkills.join(', ')} to your master CV.`);
       setNewSkills([]);
     } catch (err) {
@@ -203,42 +253,73 @@ export function CvPage() {
     }
   }
 
-  function addressGap(skill: string) {
-    setInstruction(`I have real experience with ${skill}: `);
-    chatInput.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => chatInput.current?.focus(), 300);
-  }
-
-  const saveState = !draft.id ? 'Not saved' : draft.dirty ? 'Unsaved changes' : 'Saved';
+  const saveState = !draft.id ? 'Not saved yet' : draft.dirty ? 'Unsaved changes' : 'Saved';
+  const aiOn = status?.aiConfigured ?? true;
+  const rewritten = fromMaster?.changedBullets.size ?? 0;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl leading-snug font-bold tracking-tight text-slate-900">{job.title || 'Untitled role'}</h1>
-        <p className="text-[15px] text-slate-600">{job.company || 'Company not specified'}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5 text-xs font-medium">
-          <span className="rounded-full bg-brand-50 px-2.5 py-1 text-brand-800">{job.emphasis}</span>
-          <span className={`rounded-full px-2.5 py-1 ${draft.generatedBy === 'ai' ? 'bg-slate-100 text-slate-700' : 'bg-amber-100 text-amber-900'}`}>
-            {draft.generatedBy === 'ai' ? `AI-generated${draft.aiModel ? ` (${draft.aiModel})` : ''}` : 'Demo output, no AI used'}
-          </span>
-          <span className={`rounded-full px-2.5 py-1 ${saveState === 'Saved' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>{saveState}</span>
+    <div className="space-y-4" ref={top}>
+      {/* ---------- job header ---------- */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-700 via-violet-700 to-fuchsia-700 p-4 text-white shadow-lg shadow-brand-700/20">
+        <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold tracking-wide text-white/70 uppercase">Tailored CV</p>
+            <h1 className="mt-0.5 text-xl leading-snug font-extrabold">{job.title || 'Untitled role'}</h1>
+            <p className="text-sm text-white/85">{job.company || 'Company not specified'}</p>
+          </div>
+          <button type="button" onClick={() => goTo('match')} className="rounded-full bg-white p-1 shadow-md" aria-label="Open job match">
+            <ScoreRing score={draft.analysis.score} size={74} label={false} />
+          </button>
+        </div>
+        <div className="relative mt-3 flex flex-wrap gap-1.5 text-xs font-semibold">
+          <span className="rounded-full bg-white/15 px-2.5 py-1">{job.emphasis}</span>
+          <span className="rounded-full bg-white/15 px-2.5 py-1">{draft.generatedBy === 'ai' ? 'AI-tailored' : 'Demo, no AI used'}</span>
+          <span className={`rounded-full px-2.5 py-1 ${saveState === 'Saved' ? 'bg-emerald-400/25 text-emerald-50' : 'bg-amber-300/25 text-amber-50'}`}>{saveState}</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2.5">
-        <Button variant="primary" icon="download" onClick={downloadPdf} loading={busy === 'pdf'} disabled={busy !== null}>
-          Download PDF
-        </Button>
-        <Button icon="save" onClick={saveVersion} loading={busy === 'save'} disabled={busy !== null || (Boolean(draft.id) && !draft.dirty)}>
-          {draft.id ? 'Save changes' : 'Save version'}
-        </Button>
-        <Button icon="refresh" size="sm" onClick={regenerateSummary} loading={busy === 'summary'} disabled={busy !== null}>
-          Regenerate summary
-        </Button>
-        <Button icon="plus" size="sm" onClick={() => navigate('/tailor')} disabled={busy !== null}>
-          Create another
-        </Button>
-      </div>
+      {/* ---------- the "it's ready" moment ---------- */}
+      {draft.fresh && (
+        <div className="animate-pop overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-white p-4 shadow-md">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-md shadow-emerald-600/30">
+              <Icon name="check" className="h-6 w-6" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-extrabold text-emerald-900">Your tailored CV is ready</h2>
+              <p className="mt-0.5 text-sm text-emerald-900/80">Built from your master CV for this job. Changes are highlighted in green.</p>
+            </div>
+            <button type="button" onClick={dismissReady} aria-label="Dismiss" className="-mt-1 -mr-1 flex h-9 w-9 items-center justify-center rounded-full text-emerald-800 hover:bg-emerald-100">
+              <Icon name="plus" className="h-5 w-5 rotate-45" />
+            </button>
+          </div>
+          <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-white p-2 shadow-sm">
+              <dt className="text-[11px] font-medium text-slate-500">Match</dt>
+              <dd className="text-lg font-extrabold text-slate-900">{Math.round(draft.analysis.score)}%</dd>
+            </div>
+            <div className="rounded-xl bg-white p-2 shadow-sm">
+              <dt className="text-[11px] font-medium text-slate-500">Bullets rewritten</dt>
+              <dd className="text-lg font-extrabold text-slate-900">
+                {fromMaster ? `${rewritten}/${fromMaster.bulletsTotal}` : '…'}
+              </dd>
+            </div>
+            <div className="rounded-xl bg-white p-2 shadow-sm">
+              <dt className="text-[11px] font-medium text-slate-500">Job keywords</dt>
+              <dd className="text-lg font-extrabold text-slate-900">{draft.analysis.keywordsIncluded.length}</dd>
+            </div>
+          </dl>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Button size="sm" onClick={() => { dismissReady(); goTo('match'); }}>
+              See the match
+            </Button>
+            <Button size="sm" variant="primary" icon="download" onClick={downloadPdf} loading={busy === 'pdf'} disabled={busy !== null}>
+              Download PDF
+            </Button>
+          </div>
+        </div>
+      )}
 
       {summaryNote.length > 0 && (
         <Notice kind="warn">
@@ -247,17 +328,6 @@ export function CvPage() {
           ))}
         </Notice>
       )}
-
-      <AiChat
-        aiConfigured={status?.aiConfigured ?? true}
-        messages={draft.chat ?? []}
-        value={instruction}
-        onChange={setInstruction}
-        onSend={sendInstruction}
-        busy={busy === 'chat'}
-        disabled={busy !== null}
-        inputRef={chatInput}
-      />
 
       {newSkills.length > 0 && (
         <Notice kind="info" title={`Add ${newSkills.join(', ')} to your master CV?`}>
@@ -280,7 +350,8 @@ export function CvPage() {
         </Notice>
       )}
 
-      <div role="tablist" aria-label="CV views" className="grid grid-cols-3 gap-1 rounded-xl bg-slate-200/70 p-1">
+      {/* ---------- tabs ---------- */}
+      <div role="tablist" aria-label="CV views" className="sticky top-14 z-20 -mx-1 grid grid-cols-4 gap-1 rounded-2xl border border-white/70 bg-white/85 p-1 shadow-sm backdrop-blur">
         {TABS.map((item) => (
           <button
             key={item.id}
@@ -288,7 +359,7 @@ export function CvPage() {
             role="tab"
             aria-selected={tab === item.id}
             onClick={() => setTab(item.id)}
-            className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold ${tab === item.id ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-600'}`}
+            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-bold transition-colors ${tab === item.id ? 'bg-gradient-to-br from-brand-600 to-violet-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}
           >
             <Icon name={item.icon} className="h-4 w-4" />
             {item.label}
@@ -296,17 +367,73 @@ export function CvPage() {
         ))}
       </div>
 
+      {busy === 'chat' && tab !== 'ai' && <WorkingCard title="Updating your CV" steps={REFINE_STEPS} hint="usually 10–40 seconds" stepSeconds={5} />}
+
       {tab === 'preview' && (
-        <div className="space-y-3">
-          <CvPreview content={content} />
-          <p className="text-center text-xs text-slate-500">
-            The PDF uses this content and order. Switch to <button type="button" className="font-semibold text-brand-700 underline" onClick={() => setTab('edit')}>Edit</button> to change anything.
-          </p>
+        <div className="animate-rise space-y-3">
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-white/80 px-3 py-2 shadow-sm">
+            <p className="text-xs leading-snug text-slate-600">
+              {highlight ? (
+                <>
+                  <span className="mr-1 inline-block h-3 w-3 rounded-sm bg-emerald-200 align-middle ring-1 ring-emerald-300" />
+                  {lastChange ? 'What the AI just changed' : 'Written or reworded by the AI'}
+                </>
+              ) : (
+                'Highlighting is off'
+              )}
+            </p>
+            <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-semibold text-slate-700">
+              Show changes
+              <input type="checkbox" className="peer sr-only" checked={highlight} onChange={(e) => setHighlight(e.target.checked)} />
+              <span className="relative h-6 w-11 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500 after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" />
+            </label>
+          </div>
+          {lastChange && highlight && (
+            <button type="button" onClick={() => setLastChange(null)} className="text-xs font-semibold text-brand-700 underline underline-offset-2">
+              Show all changes compared with my master CV instead
+            </button>
+          )}
+          <CvPreview content={content} changes={shownChanges} />
+          <p className="text-center text-xs text-slate-500">The PDF uses exactly this content and order. Green highlighting is never printed.</p>
+        </div>
+      )}
+
+      {tab === 'ai' && (
+        <div className="animate-rise space-y-3">
+          <AiChat
+            aiConfigured={aiOn}
+            messages={draft.chat ?? []}
+            value={instruction}
+            onChange={setInstruction}
+            onSend={() => void sendInstruction()}
+            busy={busy === 'chat'}
+            disabled={busy !== null}
+            inputRef={chatInput}
+          />
+          <div className="grid grid-cols-2 gap-2.5">
+            <Button icon="refresh" size="sm" onClick={regenerateSummary} loading={busy === 'summary'} disabled={busy !== null}>
+              New summary
+            </Button>
+            <Button icon="plus" size="sm" onClick={() => navigate('/tailor')} disabled={busy !== null}>
+              Another job
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'match' && (
+        <div className="animate-rise">
+          <AnalysisPanel
+            analysis={draft.analysis}
+            generatedBy={draft.generatedBy}
+            onBoost={aiOn ? (text) => void sendInstruction(text, 'match') : undefined}
+            boosting={busy === 'chat'}
+          />
         </div>
       )}
 
       {tab === 'edit' && (
-        <div key={editorKey} className="space-y-3">
+        <div key={editorKey} className="animate-rise space-y-3">
           <Notice>Edits apply to this CV only. Your master CV and other saved versions are not changed.</Notice>
           <Section title="Application details">
             <Field label="Job title" value={job.title} onChange={(title) => setJob({ title })} maxLength={160} />
@@ -343,19 +470,30 @@ export function CvPage() {
             <p className="text-sm leading-relaxed text-slate-600">Applies to this CV only. Set your default structure on the Master CV page.</p>
             <LayoutEditor value={content.layout} onChange={(layout) => setContent({ layout })} />
           </Section>
-          <Button variant="primary" icon="eye" className="w-full" onClick={() => { setTab('preview'); window.scrollTo(0, 0); }}>
+          <Button variant="primary" icon="eye" className="w-full" onClick={() => goTo('preview')}>
             Preview changes
           </Button>
         </div>
       )}
-
-      {tab === 'match' && <AnalysisPanel analysis={draft.analysis} generatedBy={draft.generatedBy} onAddressGap={status?.aiConfigured ? addressGap : undefined} />}
 
       <p className="pt-2 text-center text-sm">
         <Link to="/" className="font-medium text-brand-700 underline underline-offset-2">
           Back to dashboard
         </Link>
       </p>
+
+      {/* ---------- always-visible actions, above the bottom navigation ---------- */}
+      <div className="fixed inset-x-0 bottom-16 z-20 mb-[env(safe-area-inset-bottom)] border-t border-slate-200/80 bg-white/90 backdrop-blur">
+        <div className="mx-auto grid max-w-2xl grid-cols-2 gap-2.5 px-4 py-2.5">
+          <Button icon="save" onClick={saveVersion} loading={busy === 'save'} disabled={busy !== null || (Boolean(draft.id) && !draft.dirty)}>
+            {draft.id ? (draft.dirty ? 'Save changes' : 'Saved') : 'Save version'}
+          </Button>
+          <Button variant="primary" icon="download" onClick={downloadPdf} loading={busy === 'pdf'} disabled={busy !== null}>
+            Download PDF
+          </Button>
+        </div>
+      </div>
+      <div className="h-16" aria-hidden="true" />
     </div>
   );
 }

@@ -213,7 +213,7 @@ export function apiRouter(config: Config): Router {
     const [profileDoc, totalVersions, recent] = await Promise.all([
       MasterProfile.findOne({ ownerId }).lean(),
       TailoredCv.countDocuments({ ownerId }),
-      TailoredCv.find({ ownerId }).sort({ createdAt: -1 }).limit(3).select('job.title job.company job.emphasis generatedBy createdAt').lean(),
+      TailoredCv.find({ ownerId }).sort({ createdAt: -1 }).limit(3).select('job.title job.company job.emphasis generatedBy analysis.score createdAt').lean(),
     ]);
     const profile = profileDoc ? profileSchema.parse(profileDoc.data) : null;
     res.json({
@@ -240,7 +240,7 @@ export function apiRouter(config: Config): Router {
     const versions = await TailoredCv.find({ ownerId: ownerIdOf(req) })
       .sort({ createdAt: -1 })
       .limit(200)
-      .select('job.title job.company job.emphasis generatedBy createdAt updatedAt')
+      .select('job.title job.company job.emphasis generatedBy analysis.score createdAt updatedAt')
       .lean();
     res.json({ versions: versions.map(summarise) });
   });
@@ -292,6 +292,7 @@ type LeanVersion = {
   _id: unknown;
   job: { title: string; company?: string; emphasis?: string; description?: string; url?: string };
   generatedBy: string;
+  analysis?: { score?: number };
   createdAt: Date;
   updatedAt?: Date;
 };
@@ -302,6 +303,7 @@ function summarise(doc: LeanVersion) {
     jobTitle: doc.job.title,
     company: doc.job.company ?? '',
     emphasis: doc.job.emphasis ?? '',
+    score: typeof doc.analysis?.score === 'number' ? Math.round(doc.analysis.score) : undefined,
     generatedBy: doc.generatedBy,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt ?? doc.createdAt,

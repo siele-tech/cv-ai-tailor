@@ -3,7 +3,7 @@
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
-const NAVY = [0x1f, 0x3a, 0x5f];
+const NAVY = [0x4f, 0x46, 0xe5];
 const WHITE = [0xff, 0xff, 0xff];
 const GREY = [0x9a, 0xa7, 0xb8];
 

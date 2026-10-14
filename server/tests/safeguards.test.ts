@@ -16,7 +16,7 @@ function proposal(overrides: Partial<AiTailorOutput> = {}): AiTailorOutput {
     ],
     projects: [{ sourceId: project.id, description: 'Personal finance app that categorises spending.', technologies: ['React', 'Kafka'] }],
     analysis: {
-      score: 71.6,
+      score: 71.6, requirements: [],
       matchedSkills: ['Node.js', 'TypeScript', 'Kubernetes'],
       missingSkills: ['Kafka'],
       relevantExperience: ['Software Developer at Example Fintech Ltd'],
