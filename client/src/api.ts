@@ -108,6 +108,14 @@ export const api = {
     return (await send('/layout/extract', { method: 'POST', body: form })).json() as Promise<LayoutResult>;
   },
 
+  /** Put a CV in the manner of a sample CV: its structure and writing style, never its facts. */
+  restyle: async (file: File, job: Job, content: CvContent, analysis: TailorResult['analysis']): Promise<RefineResult & { sectionsFound: number }> => {
+    const form = new FormData();
+    form.append('payload', JSON.stringify({ job, content, analysis }));
+    form.append('file', file);
+    return (await send('/tailor/restyle', { method: 'POST', body: form })).json() as Promise<RefineResult & { sectionsFound: number }>;
+  },
+
   refine: (job: Job, content: CvContent, instruction: string) =>
     json<RefineResult>('/tailor/refine', 'POST', { job, content, instruction }),
 

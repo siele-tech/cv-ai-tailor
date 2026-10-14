@@ -81,8 +81,9 @@ export async function refineCv(
   job: Job,
   current: CvContent,
   instruction: string,
+  styleSample?: string,
 ): Promise<RefineResult> {
-  if (looksLikeJobAdvert(instruction)) {
+  if (!styleSample && looksLikeJobAdvert(instruction)) {
     // Start again from the master CV against the pasted advert, keeping this CV's structure.
     const newJob: Job = { ...job, description: instruction };
     const tailored = await tailorCv(config, profile, newJob, current.layout);
@@ -101,7 +102,7 @@ export async function refineCv(
   const { layout, ...cv } = current;
   const { data, model } = await chatJson(config, {
     system: REFINE_SYSTEM_PROMPT,
-    user: refineUserPrompt(profile, job, { ...cv, sectionOrder: layout.sections.map((s) => s.key) }, instruction),
+    user: refineUserPrompt(profile, job, { ...cv, sectionOrder: layout.sections.map((s) => s.key) }, instruction, styleSample),
     schema: aiRefineSchema,
   });
   const refined = applyRefinement(profile, current, instruction, data);
@@ -111,6 +112,49 @@ export async function refineCv(
     generatedBy: 'ai',
     aiModel: model,
   };
+}
+
+const RESTYLE_INSTRUCTION =
+  'Rewrite my CV in the manner of the sample CV in <style_sample>: match its tone, summary length, bullet style and level of detail, and how it presents skills. Keep all of my own facts and do not copy anything factual from the sample.';
+
+export interface RestyleResult extends RefineResult {
+  /** How many of the sample's section headings were recognised and applied. */
+  sectionsFound: number;
+}
+
+/**
+ * Put a CV "in the manner" of a sample CV: its section order and heading names, and (with
+ * an AI provider) its writing style. The sample is someone else's document, so nothing
+ * factual is taken from it; the usual safeguards also remove anything that slips through.
+ */
+export async function restyleCv(
+  config: Config,
+  profile: Profile,
+  job: Job,
+  current: CvContent,
+  analysis: Analysis,
+  sampleText: string,
+): Promise<RestyleResult> {
+  const { layout, found } = await extractLayout(config, sampleText);
+  const structured: CvContent = found > 0 ? { ...current, layout } : current;
+  const structureNote = found > 0 ? `Applied its section order and ${found} heading name${found === 1 ? '' : 's'}.` : 'No section headings were recognised in it, so the structure is unchanged.';
+
+  if (!aiConfigured(config)) {
+    return {
+      job,
+      content: structured,
+      analysis,
+      generatedBy: 'demo',
+      aiModel: '',
+      reply: `${structureNote} Copying its writing style needs an AI provider.`,
+      newSkills: [],
+      sectionsFound: found,
+    };
+  }
+  const refined = await refineCv(config, profile, job, structured, RESTYLE_INSTRUCTION, sampleText.slice(0, 15_000));
+  // The model may suggest an order of its own; the sample's order wins.
+  const content = found > 0 ? { ...refined.content, layout } : refined.content;
+  return { ...refined, content, reply: `${refined.reply} ${structureNote}`.trim(), sectionsFound: found };
 }
 
 export interface SummaryResult {

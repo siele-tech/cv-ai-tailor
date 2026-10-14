@@ -7,6 +7,7 @@ A mobile-first web app that turns your master CV plus a job description into a t
 Three things shape the result:
 
 - **Your CV structure.** On the Master CV page, upload a CV or template laid out the way you like. Its section order and heading names are applied to every new CV (its fonts and graphics are not copied). You can also reorder, rename and hide sections by hand, per CV or as your default.
+- **A sample CV in the chat.** In the Ask AI tab, tap "Attach a sample CV" (PDF or DOCX). Your CV is put in its manner: section order, heading names and writing style. Nothing factual is copied from it, and the usual fact checks still apply.
 - **Instructions to the AI.** Before generating, add guidance on the Tailor form. Afterwards, use the "Tell the AI what to change" box on the CV screen ("make the summary shorter", "put education first", "I used Kafka at my current job for event streaming, add it").
 - **Closing gaps truthfully.** The Job match tab lists what the job wants that your CV does not show. Tap one, tell the AI where you really used it, and it is added and the score re-estimated. A score of 100 is reachable only when your real experience covers every requirement; the app will not invent experience to get there.
 

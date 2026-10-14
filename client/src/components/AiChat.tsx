@@ -1,6 +1,6 @@
-import { useId, type FormEvent, type RefObject } from 'react';
+import { useId, useRef, useState, type ChangeEvent, type FormEvent, type RefObject } from 'react';
 import type { ChatMessage } from '../types';
-import { Button, Card, Notice } from './ui';
+import { Button, Card, Icon, Notice } from './ui';
 import { WorkingCard } from './WorkingCard';
 
 const EXAMPLES = ['Make the summary shorter', 'Match the wording of the job description more closely', 'Put education before experience'];
@@ -14,11 +14,24 @@ interface Props {
   busy: boolean;
   disabled: boolean;
   inputRef: RefObject<HTMLTextAreaElement | null>;
+  /** Put the CV in the manner of an uploaded sample CV. */
+  onAttachSample(file: File): void;
 }
 
 /** Free-text instructions to the AI about the CV that is open. */
-export function AiChat({ aiConfigured, messages, value, onChange, onSend, busy, disabled, inputRef }: Props) {
+export function AiChat({ aiConfigured, messages, value, onChange, onSend, busy, disabled, inputRef, onAttachSample }: Props) {
   const id = useId();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState('');
+
+  function onFileChosen(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!/\.(pdf|docx)$/i.test(file.name)) return setFileError('Please choose a PDF or DOCX file.');
+    setFileError('');
+    onAttachSample(file);
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -27,6 +40,28 @@ export function AiChat({ aiConfigured, messages, value, onChange, onSend, busy, 
 
   return (
     <Card>
+      <input ref={fileInput} type="file" className="sr-only" tabIndex={-1} aria-hidden="true" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={onFileChosen} />
+      <button
+        type="button"
+        onClick={() => fileInput.current?.click()}
+        disabled={disabled || busy}
+        className="mb-4 flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-brand-200 bg-gradient-to-br from-brand-50 to-fuchsia-50 p-3 text-left transition hover:border-brand-400 disabled:opacity-50"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 text-white shadow-md">
+          <Icon name="clip" />
+        </span>
+        <span className="min-w-0">
+          <span className="block font-bold text-slate-900">Attach a sample CV</span>
+          <span className="block text-xs leading-snug text-slate-600">
+            PDF or DOCX of a CV you like. Yours is put in the same manner: its section order, headings{aiConfigured ? ' and writing style' : ''}. Nothing factual is copied from it.
+          </span>
+        </span>
+      </button>
+      {fileError && (
+        <div className="mb-3">
+          <Notice kind="error">{fileError}</Notice>
+        </div>
+      )}
       <label htmlFor={id} className="block font-semibold text-slate-900">
         Tell the AI what to change
       </label>

@@ -318,6 +318,20 @@ describe('CV structure and instructions', () => {
     expect((await request(app).post('/api/tailor/refine').send(body)).status).toBe(401);
   });
 
+  it('restyles a CV after an uploaded sample (structure only without AI)', async () => {
+    await saveProfile();
+    const sample = await makeDocx(['Someone Else', 'EDUCATION', 'A degree', 'KEY SKILLS', 'One, Two', 'CAREER HISTORY', 'A role']);
+    const payload = JSON.stringify({ job, content: sampleContent(), analysis: { score: 60 } });
+    const res = await request(app).post('/api/tailor/restyle').set(auth()).field('payload', payload).attach('file', sample, 'sample.docx');
+    expect(res.status).toBe(200);
+    expect(res.body.sectionsFound).toBe(3);
+    expect(res.body.content.layout.sections[0].title).toBe('EDUCATION');
+    expect(res.body.analysis.score).toBe(60);
+    expect((await request(app).post('/api/tailor/restyle').set(auth()).attach('file', sample, 'sample.docx')).status).toBe(400);
+    expect((await request(app).post('/api/tailor/restyle').set(auth()).field('payload', payload).attach('file', Buffer.from('x'), 's.txt')).status).toBe(415);
+    expect((await request(app).post('/api/tailor/restyle').field('payload', payload).attach('file', sample, 'sample.docx')).status).toBe(401);
+  });
+
   it('resets the structure when all data is deleted', async () => {
     await request(app).put('/api/layout').set(auth()).send({ layout: custom });
     await request(app).delete('/api/data').set(auth());

@@ -373,6 +373,13 @@ export const aiLayoutSchema = z.object({
     .default([]),
 });
 
+/** Sent alongside an uploaded sample CV, as a JSON string in the "payload" form field. */
+export const restyleRequestSchema = z.object({
+  job: jobSchema,
+  content: cvContentSchema,
+  analysis: analysisSchema.default(emptyAnalysis),
+});
+
 export const refineRequestSchema = z.object({
   job: jobSchema,
   content: cvContentSchema,

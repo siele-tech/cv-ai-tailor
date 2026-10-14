@@ -22,6 +22,7 @@ const PATHS = {
   edit: 'M4 20h4L19 9l-4-4L4 16zM13.500 6.500l4 4',
   chart: 'M4 20V10m6 10V4m6 16v-7m4 7H2',
   logout: 'M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 16l4-4-4-4m4 4H4',
+  clip: 'M20.5 11.5 12 20a5 5 0 0 1-7.1-7.1l9.2-9.2a3.4 3.4 0 0 1 4.8 4.8l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4L15.5 7',
 } as const;
 
 export type IconName = keyof typeof PATHS;

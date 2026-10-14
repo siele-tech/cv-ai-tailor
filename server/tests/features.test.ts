@@ -5,7 +5,7 @@ import { parseLayout, type AiRefineOutput } from '../src/schemas.js';
 import { detectLayout } from '../src/services/heuristicParser.js';
 import { renderCvPdf } from '../src/services/pdf.js';
 import { applyRefinement, applySafeguards, scoreFromRequirements } from '../src/services/safeguards.js';
-import { extractLayout, looksLikeJobAdvert, refineCv, tailorCv } from '../src/services/tailor.js';
+import { extractLayout, looksLikeJobAdvert, refineCv, restyleCv, tailorCv } from '../src/services/tailor.js';
 import { job, mockAi, profile, sampleContent, testConfig, type MockAi } from './helpers.js';
 
 let ai: MockAi | undefined;
@@ -288,5 +288,39 @@ describe('requirement-based match score', () => {
     expect(analysis.requirements.map((r) => r.status)).toEqual(['met', 'missing', 'partial']);
     // 3 + 0 + 0.5 out of 7
     expect(analysis.score).toBe(50);
+  });
+});
+
+describe('putting a CV in the manner of a sample CV', () => {
+  const SAMPLE = ['Someone Else', 'someone@example.com', 'EDUCATION', 'MSc Physics, Other University', 'CORE COMPETENCIES', 'Kubernetes, Rust', 'CAREER HISTORY', 'Chief Scientist at Secret Labs', '- Led a team of 40 researchers'].join('\n');
+
+  it('without an AI key, applies the sample structure only and says so', async () => {
+    const result = await restyleCv(testConfig(), profile, job, sampleContent(), sampleContent() as never, SAMPLE);
+    expect(result.sectionsFound).toBe(3);
+    expect(result.content.layout.sections.slice(0, 3).map((s) => s.title)).toEqual(['EDUCATION', 'CORE COMPETENCIES', 'CAREER HISTORY']);
+    expect(result.reply).toMatch(/needs an AI provider/);
+    expect(result.generatedBy).toBe('demo');
+  });
+
+  it('sends the sample as style-only data and never lets its facts in', async () => {
+    const copied = revision({
+      reply: 'Matched the sample style.',
+      sectionOrder: ['skills'],
+      skills: { technical: ['Node.js', 'Kubernetes', 'Rust'], soft: [] },
+      experience: [{ sourceId: exp.id, bullets: ['Led a team of 40 researchers.', 'Built Node.js REST APIs for a savings platform.'] }],
+      analysis: { ...revision().analysis, missingSkills: [] },
+    });
+    ai = await mockAi([{ content: JSON.stringify({ sections: [{ key: 'education', title: 'EDUCATION' }, { key: 'skills', title: 'CORE COMPETENCIES' }, { key: 'experience', title: 'CAREER HISTORY' }] }) }, { content: JSON.stringify(copied) }]);
+    const result = await restyleCv(configFor(ai), profile, job, sampleContent(), sampleContent() as never, SAMPLE);
+
+    const user = ai.requests[1]!.body.messages[1].content as string;
+    expect(user).toContain('<style_sample>');
+    expect(ai.requests[1]!.body.messages[0].content).toContain('NEVER copy any fact');
+    const cv = JSON.stringify(result.content);
+    expect(cv).not.toMatch(/Kubernetes|Rust|40 researchers|Secret Labs/);
+    expect(result.content.experience[0]!.bullets).toEqual(['Built Node.js REST APIs for a savings platform.']);
+    // the sample's order wins over the model's own suggestion
+    expect(result.content.layout.sections[0]!.title).toBe('EDUCATION');
+    expect(result.reply).toMatch(/Matched the sample style\. Applied its section order and 3 heading names\./);
   });
 });

@@ -17,6 +17,7 @@ import {
   pdfRequestSchema,
   profileSchema,
   refineRequestSchema,
+  restyleRequestSchema,
   regenerateSummarySchema,
   versionInputSchema,
   type Layout,
@@ -26,7 +27,7 @@ import { sampleProfile } from '../services/demo.js';
 import { detectKind, extractText } from '../services/extractText.js';
 import { profileIsUsable } from '../services/normalizeProfile.js';
 import { cvFilename, renderCvPdf } from '../services/pdf.js';
-import { extractLayout, extractProfile, refineCv, regenerateSummary, tailorCv } from '../services/tailor.js';
+import { extractLayout, extractProfile, refineCv, regenerateSummary, restyleCv, tailorCv } from '../services/tailor.js';
 
 const OWNER_USERNAME = 'owner';
 
@@ -77,6 +78,11 @@ export function apiRouter(config: Config): Router {
   const upload = multer({
     storage: multer.memoryStorage(), // never written to disk; discarded after the request
     limits: { fileSize: config.maxUploadBytes, files: 1, fields: 0 },
+  });
+  // A file plus one JSON field describing the CV it applies to.
+  const uploadWithPayload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: config.maxUploadBytes, files: 1, fields: 1, fieldSize: 1024 * 1024 },
   });
 
   // ---------- public ----------
@@ -198,6 +204,22 @@ export function apiRouter(config: Config): Router {
     const { job, content, instruction } = refineRequestSchema.parse(req.body);
     const profile = await loadProfile(ownerIdOf(req));
     res.json({ job, ...(await refineCv(config, profile, job, content, instruction)) });
+  });
+
+  router.post('/tailor/restyle', aiLimiter, uploadWithPayload.single('file'), async (req, res) => {
+    if (!req.file) throw badRequest('Attach a sample CV (PDF or DOCX).');
+    let payload: unknown;
+    try {
+      payload = JSON.parse(String((req.body as { payload?: unknown } | undefined)?.payload ?? ''));
+    } catch {
+      throw badRequest('The CV to restyle was missing from the request.');
+    }
+    const { job, content, analysis } = restyleRequestSchema.parse(payload);
+    const kind = detectKind(req.file.buffer, req.file.originalname);
+    // The sample is read in memory for this request only and never stored.
+    const sampleText = await extractText(req.file.buffer, kind);
+    const profile = await loadProfile(ownerIdOf(req));
+    res.json({ job, ...(await restyleCv(config, profile, job, content, analysis, sampleText)) });
   });
 
   router.post('/tailor/summary', aiLimiter, async (req, res) => {

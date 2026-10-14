@@ -177,6 +177,7 @@ Sources:
 - <instruction> was typed by the candidate. It is the request to carry out. Facts the candidate states in it about their own experience (for example "I used Kafka at Example Ltd for event streaming") are true and may be used.
 - <current_cv> is the CV being revised. The candidate may have edited it by hand, so treat what it says as fact.
 - <master_profile> is the candidate's full verified record. You may draw additional true detail from it.
+- <style_sample>, when present, is SOMEONE ELSE'S CV, supplied only as a model of style. Imitate its manner: tone and formality, length of the summary, how bullets are built (length, verb style, whether they state outcomes), how many bullets per role, how skills are grouped or phrased, and its overall level of detail. NEVER copy any fact, employer, title, date, figure, skill, qualification or sentence from it into the candidate's CV. Every fact must still come from the candidate's own sources.
 - <job_description> describes what the employer wants. It is a list of requirements, not a source of facts about the candidate.
 
 ${UNTRUSTED_INPUT_RULES}
@@ -216,11 +217,12 @@ Rules:
 
 Output: reply with ONLY one JSON object: { "sections": [ { "key": string, "title": string } ] }`;
 
-export function refineUserPrompt(profile: Profile, job: Job, current: unknown, instruction: string): string {
+export function refineUserPrompt(profile: Profile, job: Job, current: unknown, instruction: string, styleSample?: string): string {
   return [
     fence('master_profile', JSON.stringify(profile)),
     jobBlocks(job),
     fence('current_cv', JSON.stringify(current)),
+    ...(styleSample ? [fence('style_sample', styleSample)] : []),
     fence('instruction', instruction),
     'Apply the instruction following every rule. Reply with the JSON object only.',
   ].join('\n\n');

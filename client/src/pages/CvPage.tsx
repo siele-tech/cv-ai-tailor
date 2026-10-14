@@ -234,6 +234,35 @@ export function CvPage() {
     }
   }
 
+  /** Put this CV in the manner of an uploaded sample CV. */
+  async function restyleFromSample(file: File) {
+    setBusy('chat');
+    const before = draft!;
+    try {
+      const result = await api.restyle(file, before.job, before.content, before.analysis);
+      const diff = changesBetween(before.content, result.content);
+      setDraft({
+        ...before,
+        content: result.content,
+        analysis: result.analysis,
+        generatedBy: result.generatedBy === 'ai' ? 'ai' : before.generatedBy,
+        aiModel: result.aiModel || before.aiModel,
+        chat: [...(before.chat ?? []), { from: 'you', text: `Put my CV in the manner of ${file.name}` }, { from: 'ai', text: `${result.reply}\n\n${describeChanges(diff)}` }],
+        dirty: true,
+        fresh: false,
+      });
+      setLastChange(diff);
+      setHighlight(true);
+      setEditorKey((k) => k + 1);
+      toast('success', 'CV restyled after your sample. Check the preview.');
+      goTo('preview');
+    } catch (err) {
+      toast('error', errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /** Keep a skill the user vouched for, so future CVs can use it too. */
   async function addSkillsToMaster() {
     setBusy('master');
@@ -409,6 +438,7 @@ export function CvPage() {
             busy={busy === 'chat'}
             disabled={busy !== null}
             inputRef={chatInput}
+            onAttachSample={(file) => void restyleFromSample(file)}
           />
           <div className="grid grid-cols-2 gap-2.5">
             <Button icon="refresh" size="sm" onClick={regenerateSummary} loading={busy === 'summary'} disabled={busy !== null}>
